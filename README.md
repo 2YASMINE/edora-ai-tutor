@@ -91,7 +91,8 @@ Pas de réponse Google déguisée. Pas d'improvisation. Si l'info n'est pas dans
 
 ## 🚦 Où on en est
 
-🟠 **Phase 0 — Setup de l'environnement** *(en cours)*
+🟩 **Phase 0 — Setup de l'environnement** *(terminée)*
+   ** Phase 1 - Moodle fonctionnel** *(en cours)*
 
 Le détail des phases, des décisions techniques et de l'avancement est dans [`docs/`](./docs).
 
