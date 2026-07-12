@@ -80,8 +80,8 @@ Pas de réponse Google déguisée. Pas d'improvisation. Si l'info n'est pas dans
 
 | 👤 | Rôle | Terrain de jeu |
 |---|---|---|
-| **Islem Troudi** | 🏗️ Lead Plugin & Infra | Moodle, PHP, Docker, API REST, déploiement |
-| **Yasmine Briki** | 🧠 Lead AI & RAG Pipeline | Extraction, chunking, embeddings, ChromaDB, prompts |
+| **Islem Troudi** | 🏗️ Lead Plugin & Infra | Moodle, PHP, Docker, API REST, déploiement , prompting |
+| **Yasmine Briki** | 🧠 Lead AI & RAG Pipeline | Extraction, chunking, embeddings, ChromaDB, UI interface |
 
 *Stage — Edora LMS · 2026*
 
