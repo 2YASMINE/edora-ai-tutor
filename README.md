@@ -27,43 +27,28 @@ Pas de réponse Google déguisée. Pas d'improvisation. Si l'info n'est pas dans
 ---
 
 ## 🧠 Comment ça pense
-👩‍🎓 Étudiant pose une question
-│
-▼
-📘 Moodle (le cours en contexte)
-│
-▼
-🔌 Plugin PHP  ───────────►  interface chat + auth + identification du cours
-│
-│  REST API
-▼
-🐍 Microservice Python (FastAPI)
-│
-▼
-✂️  Chunking  →  🧬 Embeddings  →  🔍 Recherche vectorielle
-│
-▼
-🗂️  ChromaDB (la mémoire du cours)
-│
-▼
-✨ Gemini Flash — génère la réponse À PARTIR du contexte retrouvé
-│
-▼
-💬 Réponse renvoyée → affichée à l'étudiant
 
-**La règle d'or du système :** aucune génération de réponse sans passage préalable par la recherche dans le cours. Le LLM n'a jamais le champ libre.
+1. 👩‍🎓 **L'étudiant pose une question** dans le chat du cours
+2. 📘 Le contexte du **cours Moodle** est identifié
+3. 🔌 Le **Plugin PHP** capture la question (interface + auth + identification du cours) et l'envoie via REST API
+4. 🐍 Le **Microservice Python (FastAPI)** prend le relais
+5. ✂️ **Chunking** → 🧬 **Embeddings** → 🔍 **Recherche vectorielle**
+6. 🗂️ Les chunks pertinents sont retrouvés dans **ChromaDB** (la mémoire du cours)
+7. ✨ **Gemini Flash** génère une réponse, strictement à partir du contexte retrouvé
+8. 💬 La réponse est renvoyée au plugin puis **affichée à l'étudiant**
+
+> **La règle d'or du système :** aucune génération de réponse sans passage préalable par la recherche dans le cours. Le LLM n'a jamais le champ libre.
 
 ---
 
 ## 📁 Anatomie du repo
-edora-ai-tutor/
-│
-├── 🔌 moodle-plugin/      → Interface, auth, pont vers Moodle (PHP)
-├── 🐍 ai-service/         → Cerveau RAG : chunking, embeddings, LLM (Python)
-├── 📚 docs/               → Décisions techniques, architecture, specs
-└── 🐳 docker-compose.yml  → Un docker compose up et tout tourne
 
----
+| Dossier | Rôle |
+|---|---|
+| 🔌 `moodle-plugin/` | Interface, auth, pont vers Moodle (PHP) |
+| 🐍 `ai-service/` | Cerveau RAG : chunking, embeddings, LLM (Python) |
+| 📚 `docs/` | Décisions techniques, architecture, specs |
+| 🐳 `docker-compose.yml` | Un `docker compose up` et tout tourne |
 
 ## 🛠️ Sous le capot
 
