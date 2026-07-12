@@ -1,43 +1,119 @@
----
+<div align="center">
 
-## 🛠️ Stack technique
+# 🎓 Edora AI Tutor
 
-| Couche | Technologie |
-|---|---|
-| Interface / Plugin | PHP, Moodle Plugin API, JavaScript |
-| Microservice IA | Python, FastAPI |
-| Base vectorielle | ChromaDB |
-| Historique conversation | MySQL |
-| Modèle LLM | Gemini Flash (Google AI Studio) |
-| Conteneurisation | Docker, Docker Compose |
-| Versioning | Git / GitHub |
+### *Un tuteur qui connaît ses limites — et les respecte.*
 
----
+**Un assistant IA pédagogique qui ne répond qu'avec ce que le cours contient.**  
+Jamais plus. Jamais moins. Jamais inventé.
 
-## ✨ Fonctionnalités prévues
+![Status](https://img.shields.io/badge/status-en%20d%C3%A9veloppement-orange)
+![Python](https://img.shields.io/badge/Python-FastAPI-3776AB?logo=python&logoColor=white)
+![PHP](https://img.shields.io/badge/PHP-Moodle%20Plugin-777BB4?logo=php&logoColor=white)
+![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-6C4FF6)
+![Gemini](https://img.shields.io/badge/LLM-Gemini%20Flash-4285F4?logo=googlegemini&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker&logoColor=white)
 
-- [ ] Répondre aux questions sur le contenu du cours
-- [ ] Expliquer un concept de plusieurs façons différentes
-- [ ] Générer des questions de révision
-- [ ] Fournir des exemples concrets
-- [ ] Conserver un historique de conversation par étudiant
-- [ ] Refuser explicitement de répondre si l'information n'est pas dans le cours
+</div>
 
 ---
 
-## 👥 Équipe
+## 💡 L'idée en une phrase
 
-Projet réalisé dans le cadre d'un stage à Edora LMS.
+> Les étudiants apprennent souvent seuls, le soir, coincés sur un concept — et l'enseignant n'est pas toujours là pour répondre. **Edora AI Tutor** comble ce vide, mais avec une règle stricte : il ne parle **que** de ce que le cours enseigne.
 
-| | Rôle | Responsabilités principales |
+Pas de réponse Google déguisée. Pas d'improvisation. Si l'info n'est pas dans le cours, il le dit — clairement, honnêtement.
+
+---
+
+## 🧠 Comment ça pense
+👩‍🎓 Étudiant pose une question
+│
+▼
+📘 Moodle (le cours en contexte)
+│
+▼
+🔌 Plugin PHP  ───────────►  interface chat + auth + identification du cours
+│
+│  REST API
+▼
+🐍 Microservice Python (FastAPI)
+│
+▼
+✂️  Chunking  →  🧬 Embeddings  →  🔍 Recherche vectorielle
+│
+▼
+🗂️  ChromaDB (la mémoire du cours)
+│
+▼
+✨ Gemini Flash — génère la réponse À PARTIR du contexte retrouvé
+│
+▼
+💬 Réponse renvoyée → affichée à l'étudiant
+
+**La règle d'or du système :** aucune génération de réponse sans passage préalable par la recherche dans le cours. Le LLM n'a jamais le champ libre.
+
+---
+
+## 📁 Anatomie du repo
+edora-ai-tutor/
+│
+├── 🔌 moodle-plugin/      → Interface, auth, pont vers Moodle (PHP)
+├── 🐍 ai-service/         → Cerveau RAG : chunking, embeddings, LLM (Python)
+├── 📚 docs/               → Décisions techniques, architecture, specs
+└── 🐳 docker-compose.yml  → Un docker compose up et tout tourne
+
+---
+
+## 🛠️ Sous le capot
+
+| Brique | Techno | Rôle |
 |---|---|---|
-| **Islem Troudi** | Lead Moodle Plugin & Infrastructure | Plugin PHP, Docker, API REST, déploiement |
-| **Yasmine Briki** | Lead AI Microservice & RAG Pipeline | Extraction de contenu, chunking, embeddings, ChromaDB, prompt engineering |
+| 🖥️ Interface | PHP · Moodle Plugin API · JS | Chat intégré nativement dans le cours |
+| 🧩 Microservice IA | Python · FastAPI | Orchestration du pipeline RAG |
+| 🗂️ Mémoire vectorielle | ChromaDB | Stockage & recherche sémantique des chunks |
+| 🧾 Historique | MySQL | Conversations persistantes par étudiant |
+| 🤖 Génération | Gemini Flash | Réponses ancrées dans le contexte retrouvé |
+| 📦 Environnement | Docker · Docker Compose | Setup reproductible en une commande |
 
 ---
 
-## 📌 Statut du projet
+## ✨ Ce que le tuteur saura faire
 
-🚧 En cours de développement — Phase 0 (setup environnement)
+- [ ] 💬 Répondre aux questions sur le contenu exact du cours
+- [ ] 🔄 Reformuler un concept difficile de plusieurs façons
+- [ ] 📝 Générer des questions de révision sur mesure
+- [ ] 🎯 Donner des exemples concrets, ancrés dans le cours
+- [ ] 🧵 Garder le fil d'une conversation dans le temps
+- [ ] 🚫 Dire "je ne trouve pas ça dans le cours" plutôt que d'inventer
 
-Voir `docs/` pour les décisions techniques détaillées et l'avancement par phase.
+---
+
+## 👩‍💻 L'équipe derrière le projet
+
+<div align="center">
+
+| 👤 | Rôle | Terrain de jeu |
+|---|---|---|
+| **Islem Troudi** | 🏗️ Lead Plugin & Infra | Moodle, PHP, Docker, API REST, déploiement |
+| **Yasmine Briki** | 🧠 Lead AI & RAG Pipeline | Extraction, chunking, embeddings, ChromaDB, prompts |
+
+*Stage — Edora LMS · 2026*
+
+</div>
+
+---
+
+## 🚦 Où on en est
+
+🟠 **Phase 0 — Setup de l'environnement** *(en cours)*
+
+Le détail des phases, des décisions techniques et de l'avancement est dans [`docs/`](./docs).
+
+---
+
+<div align="center">
+
+*Construit avec 🩵 par deux stagiaires qui refusent qu'une IA invente la réponse.*
+
+</div>
