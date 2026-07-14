@@ -42,6 +42,7 @@ services:
     volumes:
       - moodle_data:/bitnami/moodle
       - moodledata_data:/bitnami/moodledata
+      - ./moodle-plugin/blocks/tutor_ai:/bitnami/moodle/blocks/tutor_ai
 
 volumes:
   mariadb_data:
