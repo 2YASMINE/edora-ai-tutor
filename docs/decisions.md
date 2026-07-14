@@ -63,6 +63,12 @@
 \### Prochaine étape
 
 \- Squelette FastAPI (microservice Python)
+## Docker Compose Moodle + MariaDB — 13 juillet 2026
+**Participants :** Islem , 
+**Problème rencontré :** MariaDB 11.8 (image bitnamilegacy) crée les nouvelles bases avec la collation `utf8mb4_uca1400_ai_ci` par défaut (nouveau standard MariaDB 11.6+), non reconnue par le script d'installation Moodle comme "Unicode valide".
+**Solution :** ajout de `MARIADB_EXTRA_FLAGS=--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci` dans le service `mariadb` du docker-compose.yml, pour forcer la collation classique attendue par Moodle dès la création de la base.
+**Leçon apprise :** toujours vérifier `docker compose down -v` avant de tester une nouvelle correction — sinon un ancien volume ou un `.env` désynchronisé masque le vrai problème.
+>>>>>>> d7863ba5a65c26d89043c4e719be0b79d658987a
 
 
 
