@@ -93,7 +93,7 @@ Déclenché quand un enseignant upload une ressource sur Moodle. Lance l'extract
   "course_id": 42,
   "resource_id": 205,
   "resource_type": "pdf",
-  "file_url": "http://moodle:8080/pluginfile.php/.../chapitre3.pdf"
+  "file_url": "http://moodle:8082/pluginfile.php/.../chapitre3.pdf"
 }
 ```
 
