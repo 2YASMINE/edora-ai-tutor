@@ -66,5 +66,21 @@
 
 >>>>>>> d7863ba5a65c26d89043c4e719be0b79d658987a
 
+## 15/07/2026 — Yasmine
 
+### Tâches accomplies
+- Créé le squelette FastAPI (microservice IA)
+  - Endpoints : /health, /ask, /upload-resource
+  - Structure : main.py, routers/, services/, models/
+  - Documentation automatique sur /docs
+- Validé la communication Hello World plugin Moodle → FastAPI
+  - Moodle appelle http://host.docker.internal:8000/health
+  - Réponse affichée dans le bloc Tutor AI ✅
+- Pushé tout le travail sur main
+### Architecture microservice
+- Framework : FastAPI + Uvicorn
+- Communication : HTTP REST entre plugin PHP et microservice Python
+- URL Docker : host.docker.internal:8000
+### Prochaine étape
+- Endpoint déclencheur d'extraction (Phase 3)
 
