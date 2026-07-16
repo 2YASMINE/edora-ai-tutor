@@ -60,11 +60,11 @@
 
 
 
+
 \### Prochaine étape
 
 \- Squelette FastAPI (microservice Python)
 
->>>>>>> d7863ba5a65c26d89043c4e719be0b79d658987a
 
 ## 15/07/2026 — Yasmine
 
