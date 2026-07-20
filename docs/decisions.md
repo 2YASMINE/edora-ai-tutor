@@ -84,3 +84,20 @@
 ### Prochaine étape
 - Endpoint déclencheur d'extraction (Phase 3)
 
+
+## 20/07/2026 — Yasmine
+
+### Tâches accomplies
+- Récupéré le code d'Islem (Phase 3 cartes 1 et 2)
+- Installé les dépendances : pdfplumber, python-docx, python-pptx, beautifulsoup4, python-dotenv
+- Configuré token Moodle dans .env (web services activés, REST activé, service Edora AI créé)
+- Testé extraction PDF → OK
+- Testé extraction pages Moodle → OK | 1 section
+- Créé db/events.php → enregistre l'observer Moodle
+- Créé classes/observer.php → appelle /upload-resource automatiquement
+- Testé → upload PDF dans Moodle déclenche bien le microservice ✅
+- Phase 3 complète ✅
+
+### Prochaine étape
+- Phase 4 : Chunking + Embeddings + ChromaDB
+
