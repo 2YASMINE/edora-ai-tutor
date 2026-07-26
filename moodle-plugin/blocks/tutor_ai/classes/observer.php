@@ -4,32 +4,76 @@ defined('MOODLE_INTERNAL') || die();
 class block_tutor_ai_observer {
 
     public static function course_module_created(\core\event\course_module_created $event) {
+
         $data = $event->get_data();
-        
-        // Seulement pour les ressources de type fichier
+
+        // Seulement les ressources fichier
         if ($data['other']['modulename'] !== 'resource') {
             return;
         }
 
-        $course_id   = $data['courseid'];
-        $resource_id = $data['objectid'];
+        $courseid   = $data['courseid'];
+        $resourceid = $data['objectid'];
 
-        // Appel HTTP vers le microservice FastAPI
-        $url = 'http://host.docker.internal:8000/upload-resource';
-        
+        // Recuperation du module
+        $cm = get_coursemodule_from_id('resource', $resourceid);
+        if (!$cm) {
+            return;
+        }
+
+        // Contexte du module
+        $context = context_module::instance($cm->id);
+
+        // Recuperation du fichier uploade
+        $fs    = get_file_storage();
+        $files = $fs->get_area_files(
+            $context->id,
+            'mod_resource',
+            'content',
+            0,
+            'filename',
+            false
+        );
+
+        if (empty($files)) {
+            return;
+        }
+
+        $file      = reset($files);
+        $filename  = $file->get_filename();
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+        // Formats supportes par document_extractor.py
+        $allowed       = ['pdf', 'docx', 'pptx', 'txt'];
+        $resource_type = in_array($extension, $allowed) ? $extension : 'pdf';
+
+        // Token Moodle pour acces authentifie aux fichiers
+        $token = '8134f84815ed27c85ae89fc2070dc98e';
+
+        // URL authentifiee du fichier via webservice/pluginfile.php
+        $file_url =
+            'http://host.docker.internal:8082/webservice/pluginfile.php/'
+            . $context->id
+            . '/mod_resource/content/0/'
+            . rawurlencode($filename)
+            . '?token=' . $token;
+
         $payload = json_encode([
-            'course_id'     => $course_id,
-            'resource_id'   => $resource_id,
-            'resource_type' => 'pdf',
-            'file_url'      => 'http://host.docker.internal:8082/pluginfile.php/' . $course_id . '/mod_resource/content/0/'
+            'course_id'     => (int) $courseid,
+            'resource_id'   => (int) $resourceid,
+            'resource_type' => $resource_type,
+            'file_url'      => $file_url
         ]);
 
-        $ch = curl_init($url);
+        // Appel HTTP POST vers le microservice FastAPI
+        $ch = curl_init('http://host.docker.internal:8000/upload-resource');
+
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_POST,           true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS,     $payload);
+        curl_setopt($ch, CURLOPT_HTTPHEADER,     ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_TIMEOUT,        10);
+
         curl_exec($ch);
         curl_close($ch);
     }
