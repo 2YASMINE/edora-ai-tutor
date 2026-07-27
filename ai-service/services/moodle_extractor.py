@@ -1,27 +1,27 @@
-"""
-Service d'extraction de contenu depuis l'API REST Moodle.
-Récupère le texte des pages et ressources d'un cours.
-"""
-
 import httpx
 import re
 from bs4 import BeautifulSoup
-
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 MOODLE_BASE_URL = os.getenv("MOODLE_BASE_URL", "http://localhost:8082")
 MOODLE_WS_TOKEN = os.getenv("MOODLE_WS_TOKEN", "")
-
+print("===== MOODLE EXTRACTOR LOADED =====")
+print("ENV PATH:", env_path)
+print("MOODLE URL:", MOODLE_BASE_URL)
+print("TOKEN:", MOODLE_WS_TOKEN)
+print("===================================")
 
 async def extract_course_content(course_id: int) -> dict:
     """
-    Récupère et extrait le texte de toutes les ressources
+    R├®cup├¿re et extrait le texte de toutes les ressources
     textuelles d'un cours Moodle.
     """
-    # Récupérer la structure du cours
+    # R├®cup├®rer la structure du cours
     course_contents = await _get_course_contents(course_id)
     if not course_contents["success"]:
         return {
@@ -32,7 +32,7 @@ async def extract_course_content(course_id: int) -> dict:
             "error": course_contents["error"]
         }
 
-    # Récupérer toutes les pages du cours en un seul appel
+    # R├®cup├®rer toutes les pages du cours en un seul appel
     pages_by_id = await _get_all_pages(course_id)
 
     sections = []
@@ -42,7 +42,7 @@ async def extract_course_content(course_id: int) -> dict:
         section_name = section.get("name", "Section sans titre")
         section_text_parts = []
 
-        # Résumé de section si présent
+        # R├®sum├® de section si pr├®sent
         summary = section.get("summary", "")
         if summary:
             clean_summary = _clean_html(summary)
@@ -56,17 +56,17 @@ async def extract_course_content(course_id: int) -> dict:
             module_text = ""
 
             if modname == "page":
-                # Utiliser le contenu récupéré via mod_page_get_pages_by_courses
+                # Utiliser le contenu r├®cup├®r├® via mod_page_get_pages_by_courses
                 instance_id = module.get("instance")
                 if instance_id and instance_id in pages_by_id:
                     html_content = pages_by_id[instance_id].get("content", "")
                     module_text = _clean_html(html_content)
 
             elif modname in ("resource", "folder"):
-                # Les fichiers uploadés sont traités par document_extractor
-                module_text = f"[Fichier uploadé — traité séparément]"
+                # Les fichiers upload├®s sont trait├®s par document_extractor
+                module_text = f"[Fichier upload├® ÔÇö trait├® s├®par├®ment]"
 
-            # Description de l'activité si présente
+            # Description de l'activit├® si pr├®sente
             description = module.get("description", "")
             if description and not module_text:
                 module_text = _clean_html(description)
@@ -94,7 +94,7 @@ async def extract_course_content(course_id: int) -> dict:
             "course_id": course_id,
             "sections": [],
             "full_text": "",
-            "error": "Aucun contenu textuel trouvé dans ce cours"
+            "error": "Aucun contenu textuel trouv├® dans ce cours"
         }
 
     return {
@@ -107,7 +107,7 @@ async def extract_course_content(course_id: int) -> dict:
 
 
 async def _get_course_contents(course_id: int) -> dict:
-    """Structure complète du cours via l'API Moodle."""
+    """Structure compl├¿te du cours via l'API Moodle."""
     params = {
         "wstoken": MOODLE_WS_TOKEN,
         "wsfunction": "core_course_get_contents",
@@ -130,8 +130,8 @@ async def _get_course_contents(course_id: int) -> dict:
 
 async def _get_all_pages(course_id: int) -> dict:
     """
-    Récupère le contenu HTML de toutes les pages du cours.
-    Retourne un dict indexé par instance id : {instance_id: page_data}
+    R├®cup├¿re le contenu HTML de toutes les pages du cours.
+    Retourne un dict index├® par instance id : {instance_id: page_data}
     """
     params = {
         "wstoken": MOODLE_WS_TOKEN,

@@ -1,29 +1,29 @@
 from chunker import chunk_text
 from embeddings import get_embeddings_for_chunks
 
-text = """
-L'intelligence artificielle est un domaine de l'informatique qui vise à créer des machines capables de simuler l'intelligence humaine.
+texte_test = """
+L'intelligence artificielle est un domaine de l'informatique.
+Elle vise a creer des systemes capables d'effectuer des taches
+qui necessitent normalement l'intelligence humaine.
 
-La récursivité est une technique en programmation où une fonction s'appelle elle-même.
+La recursivite est une technique de programmation ou une fonction
+s'appelle elle-meme.
 """
 
-# Chunking
 chunks = chunk_text(
-    text=text,
+    text=texte_test,
     source="test.pdf",
     course_id=2,
-    resource_id=1,
-    chunk_size=200,
-    chunk_overlap=30
+    resource_id=1
 )
 
-print(f"Nombre de chunks : {len(chunks)}")
+print(f"Chunks crees : {len(chunks)}")
 
-# Embeddings
 results = get_embeddings_for_chunks(chunks)
 
-for i, r in enumerate(results):
-    print(f"\nChunk {i+1} :")
-    print(f"  Texte : {r['text'][:50]}...")
-    print(f"  Taille vecteur : {len(r['embedding'])} dimensions")
-    print(f"  Métadonnées : {r['metadata']}")
+print(f"Embeddings generes : {len(results)}")
+for i, r in enumerate(results, 1):
+    print(f"\nChunk {i} :")
+    print(f"  Texte     : {r['text'][:60]}...")
+    print(f"  Dimensions: {len(r['embedding'])}")
+    print(f"  Metadata  : {r['metadata']}")

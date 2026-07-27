@@ -48,12 +48,12 @@ class block_tutor_ai_observer {
         $resource_type = in_array($extension, $allowed) ? $extension : 'pdf';
 
         // Token Moodle pour acces authentifie aux fichiers
-        $token = '8134f84815ed27c85ae89fc2070dc98e';
+        $token = '3f58f53f7abb33955e5b08d79575abc3';
 
         // URL authentifiee du fichier via webservice/pluginfile.php
         $file_url =
             'http://host.docker.internal:8082/webservice/pluginfile.php/'
-            . $context->id
+            . $file->get_contextid()
             . '/mod_resource/content/0/'
             . rawurlencode($filename)
             . '?token=' . $token;
