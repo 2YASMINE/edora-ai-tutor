@@ -1,6 +1,12 @@
 import logging
 from fastapi import FastAPI
 from routers import chat, resources
+from dotenv import load_dotenv
+import os
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
+
+print("MOODLE_INTERNAL_URL =", os.getenv("MOODLE_INTERNAL_URL"))
 
 # Configuration du logging pour voir tous les messages INFO
 logging.basicConfig(

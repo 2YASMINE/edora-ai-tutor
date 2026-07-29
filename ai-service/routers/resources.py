@@ -10,6 +10,9 @@ from services.document_extractor import extract_text
 from services.chunker import chunk_text
 from services.embeddings import get_embedding
 from services.chroma_service import store_chunks
+import os
+
+print("TOKEN UTILISE :", os.getenv("MOODLE_WS_TOKEN"))
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -154,21 +157,33 @@ async def process_resource(
 
 async def _download_file(file_url: str, resource_id: int, resource_type: str = "pdf") -> str:
     """
-    Telecharge un fichier depuis une URL Moodle authentifiee
-    et le sauvegarde temporairement.
+    Telecharge un fichier depuis une URL Moodle authentifiee.
+    DOWNLOAD_METHOD=session → session login (Windows natif)
+    DOWNLOAD_METHOD=token   → tokenpluginfile direct
     """
-    tmp_dir = "/tmp/edora_uploads"
+    tmp_dir = os.getenv("TMP_DIR", "C:/Users/wiki/edora_uploads")
     os.makedirs(tmp_dir, exist_ok=True)
 
-    # Decoder l'URL (rawurlencode de PHP → %20 etc.)
+    moodle_url = os.getenv("MOODLE_INTERNAL_URL", "http://host.docker.internal:8082")
+    ws_token = os.getenv("MOODLE_WS_TOKEN", "")
+    download_method = os.getenv("DOWNLOAD_METHOD", "session")
+
+    # Remplacer host.docker.internal par l'URL locale
+    file_url = file_url.replace("http://host.docker.internal:8082", moodle_url)
+
+    if download_method == "session":
+        # Convertir tokenpluginfile → pluginfile pour session login
+        file_url = file_url.replace(f"tokenpluginfile.php/{ws_token}", "pluginfile.php")
+
+    logger.info(f"DOWNLOAD_METHOD = {download_method}")
+    logger.info(f"URL FINALE = {file_url}")
+
     parsed_url = urlparse(file_url)
     decoded_path = unquote(parsed_url.path)
     extension = os.path.splitext(decoded_path)[1].lower()
 
-    logger.info(f"URL path decode : {decoded_path}")
     logger.info(f"Extension detectee : {extension}")
 
-    # Fallback : deduire depuis resource_type si extension absente
     if not extension:
         fallback_map = {
             "pdf": ".pdf",
@@ -177,7 +192,6 @@ async def _download_file(file_url: str, resource_id: int, resource_type: str = "
             "txt": ".txt"
         }
         extension = fallback_map.get(resource_type.lower(), ".pdf")
-        logger.info(f"Extension par fallback ({resource_type}) : {extension}")
 
     file_path = f"{tmp_dir}/resource_{resource_id}{extension}"
 
@@ -186,6 +200,24 @@ async def _download_file(file_url: str, resource_id: int, resource_type: str = "
             timeout=30.0,
             follow_redirects=True
         ) as client:
+
+            if download_method == "session":
+                # Etape 1 : Recuperer le logintoken
+                import re
+                login_url = f"{moodle_url}/login/index.php"
+                login_page = await client.get(login_url)
+                token_match = re.search(r'name="logintoken" value="([^"]+)"', login_page.text)
+                login_token = token_match.group(1) if token_match else ""
+
+                # Etape 2 : Se connecter
+                await client.post(login_url, data={
+                    "username": os.getenv("MOODLE_ADMIN_USER", "admin"),
+                    "password": os.getenv("MOODLE_ADMIN_PASSWORD", "Edora2026!"),
+                    "logintoken": login_token
+                })
+                logger.info("Connexion Moodle effectuee via session")
+
+            # Telecharger le fichier
             response = await client.get(file_url)
             logger.info(f"Reponse Moodle : HTTP {response.status_code}")
             response.raise_for_status()
