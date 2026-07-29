@@ -7,7 +7,6 @@ class block_tutor_ai_observer {
 
         $data = $event->get_data();
 
-        // Seulement les ressources fichier
         if ($data['other']['modulename'] !== 'resource') {
             return;
         }
@@ -15,16 +14,13 @@ class block_tutor_ai_observer {
         $courseid   = $data['courseid'];
         $resourceid = $data['objectid'];
 
-        // Recuperation du module
         $cm = get_coursemodule_from_id('resource', $resourceid);
         if (!$cm) {
             return;
         }
 
-        // Contexte du module
         $context = context_module::instance($cm->id);
 
-        // Recuperation du fichier uploade
         $fs    = get_file_storage();
         $files = $fs->get_area_files(
             $context->id,
@@ -43,20 +39,16 @@ class block_tutor_ai_observer {
         $filename  = $file->get_filename();
         $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 
-        // Formats supportes par document_extractor.py
         $allowed       = ['pdf', 'docx', 'pptx', 'txt'];
         $resource_type = in_array($extension, $allowed) ? $extension : 'pdf';
 
-        // Token Moodle pour acces authentifie aux fichiers
-        $token = '3f58f53f7abb33955e5b08d79575abc3';
+        $token = '415bb98e8067544c4146182248d69dfe';
 
-        // URL authentifiee du fichier via webservice/pluginfile.php
-        $file_url =
-            'http://host.docker.internal:8082/webservice/pluginfile.php/'
+        $file_url = 'http://host.docker.internal:8082/tokenpluginfile.php/'
+            . $token . '/'
             . $file->get_contextid()
             . '/mod_resource/content/0/'
-            . rawurlencode($filename)
-            . '?token=' . $token;
+            . rawurlencode($filename);
 
         $payload = json_encode([
             'course_id'     => (int) $courseid,
@@ -65,7 +57,6 @@ class block_tutor_ai_observer {
             'file_url'      => $file_url
         ]);
 
-        // Appel HTTP POST vers le microservice FastAPI
         $ch = curl_init('http://host.docker.internal:8000/upload-resource');
 
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
