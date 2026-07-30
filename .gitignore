@@ -18,4 +18,4 @@ vendor/
 .DS_Store
 Thumbs.db
 
-edoralms-moodle-block_ai_tutor_03/
+edoralms-moodle-block_ai_tutor_03/ai-service/chroma_db/ 

@@ -1,12 +1,18 @@
 from pydantic import BaseModel
 from typing import Optional, List
 
+# ── Message d'historique ──
+class ConversationMessage(BaseModel):
+    role: str   # "user" ou "assistant"
+    content: str
+
 # Request /ask
 class AskRequest(BaseModel):
     question: str
     course_id: int
     student_id: int
     conversation_id: Optional[str] = None
+    conversation_history: Optional[List[ConversationMessage]] = []  # ← ajout Phase 7
 
 # Response /ask
 class SourceChunk(BaseModel):
@@ -18,6 +24,7 @@ class AskResponse(BaseModel):
     conversation_id: str
     sources: List[SourceChunk]
     found_in_course: bool
+    chunks_used: int   # ← ajout pour debug + Phase 6
 
 # Request /upload-resource
 class UploadResourceRequest(BaseModel):
