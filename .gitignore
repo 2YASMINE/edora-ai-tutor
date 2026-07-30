@@ -18,4 +18,8 @@ vendor/
 .DS_Store
 Thumbs.db
 
-edoralms-moodle-block_ai_tutor_03/ai-service/chroma_db/ 
+# ChromaDB
+ai-service/chroma_db/
+
+# Repo officiel Edora
+edoralms-moodle-block_ai_tutor_03/
