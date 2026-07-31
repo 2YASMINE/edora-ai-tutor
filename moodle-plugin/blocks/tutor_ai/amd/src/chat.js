@@ -1,47 +1,108 @@
-define(['jquery'], function($) {
-    return {
-        init: function() {
-            $('#tutor-ai-send').on('click', function() {
-                var message = $('#tutor-ai-input').val().trim();
-                if (message === '') return;
+/**
+ * Edora AI Tutor — Module chat
+ * @author Islem Troudi — Phase 6
+ */
 
-                // Afficher le message de l'étudiant
-                $('#tutor-ai-messages').append(
-                    '<div class="tutor-ai-bubble user">' + message + '</div>'
-                );
-                $('#tutor-ai-input').val('');
+(function () {
 
-                // Afficher indicateur de chargement
-                $('#tutor-ai-messages').append(
-                    '<div class="tutor-ai-bubble bot" id="loading">...</div>'
-                );
+    let conversationHistory = [];
+    let conversationId = 'conv-' + Date.now();
 
-                // Appel au microservice (à configurer plus tard)
-                $.ajax({
-                    url: '/blocks/tutor_ai/ask.php',
-                    method: 'POST',
-                    data: { question: message },
-                    success: function(response) {
-                        $('#loading').remove();
-                        $('#tutor-ai-messages').append(
-                            '<div class="tutor-ai-bubble bot">' + response + '</div>'
-                        );
-                    },
-                    error: function() {
-                        $('#loading').remove();
-                        $('#tutor-ai-messages').append(
-                            '<div class="tutor-ai-bubble bot">Erreur de connexion.</div>'
-                        );
-                    }
-                });
-            });
+    function appendMessage(text, role, loading) {
+        const messages = document.getElementById('edo-messages');
+        const bubble = document.createElement('div');
+        bubble.classList.add('edo-bubble', 'edo-bubble--' + role);
 
-            // Envoyer avec la touche Enter
-            $('#tutor-ai-input').on('keypress', function(e) {
-                if (e.which === 13) {
-                    $('#tutor-ai-send').click();
-                }
-            });
+        if (loading) {
+            bubble.classList.add('edo-bubble--loading');
+            bubble.innerHTML = '<span class="edo-spinner"></span> Edo réfléchit…';
+        } else {
+            bubble.innerHTML = text.replace(/\n/g, '<br>');
         }
-    };
-});
+
+        messages.appendChild(bubble);
+        messages.scrollTop = messages.scrollHeight;
+        return bubble;
+    }
+
+    async function sendQuestion(question, apiUrl, courseId) {
+        const sendBtn = document.getElementById('edo-send');
+        const input   = document.getElementById('edo-input');
+
+        sendBtn.disabled = true;
+        input.disabled   = true;
+
+        appendMessage(question, 'user');
+        conversationHistory.push({ role: 'user', content: question });
+
+        const loadingBubble = appendMessage('', 'bot', true);
+
+        try {
+            const response = await fetch(apiUrl + '/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    question:             question,
+                    course_id:            courseId,
+                    student_id:           0,
+                    conversation_id:      conversationId,
+                    conversation_history: conversationHistory.slice(-6)
+                })
+            });
+
+            loadingBubble.remove();
+
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+
+            const data = await response.json();
+            appendMessage(data.answer, 'bot');
+            conversationHistory.push({ role: 'assistant', content: data.answer });
+
+        } catch (error) {
+            loadingBubble.remove();
+            appendMessage('⚠️ Je n\'arrive pas à joindre le serveur. Vérifie ta connexion et réessaie.', 'bot');
+            console.error('[Edora Chat] Erreur fetch:', error);
+        } finally {
+            sendBtn.disabled = false;
+            input.disabled   = false;
+            input.focus();
+        }
+    }
+
+    function init() {
+        const root    = document.getElementById('edo-chat-root');
+        const input   = document.getElementById('edo-input');
+        const sendBtn = document.getElementById('edo-send');
+
+        if (!root || !input || !sendBtn) {
+            console.error('[Edora Chat] Éléments DOM introuvables.');
+            return;
+        }
+
+        const apiUrl   = root.dataset.apiUrl;
+        const courseId = parseInt(root.dataset.courseId, 10);
+
+        sendBtn.addEventListener('click', function () {
+            const question = input.value.trim();
+            if (!question) return;
+            input.value = '';
+            sendQuestion(question, apiUrl, courseId);
+        });
+
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendBtn.click();
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+})();
