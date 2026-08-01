@@ -1,6 +1,7 @@
 /**
  * Edora AI Tutor — Module chat
  * @author Islem Troudi — Phase 6
+ * @author Yasmine — Floating button
  */
 
 (function () {
@@ -71,6 +72,31 @@
         }
     }
 
+    function initFloating() {
+        const fab    = document.getElementById('edo-fab');
+        const panel  = document.getElementById('edo-panel');
+        const close  = document.getElementById('edo-close');
+
+        if (!fab || !panel) return;
+
+        // Ouvrir le panel
+        fab.addEventListener('click', function () {
+            panel.classList.toggle('edo-panel--open');
+            fab.classList.toggle('edo-fab--open');
+            if (panel.classList.contains('edo-panel--open')) {
+                document.getElementById('edo-input').focus();
+            }
+        });
+
+        // Fermer le panel
+        if (close) {
+            close.addEventListener('click', function () {
+                panel.classList.remove('edo-panel--open');
+                fab.classList.remove('edo-fab--open');
+            });
+        }
+    }
+
     function init() {
         const root    = document.getElementById('edo-chat-root');
         const input   = document.getElementById('edo-input');
@@ -97,6 +123,8 @@
                 sendBtn.click();
             }
         });
+
+        initFloating();
     }
 
     if (document.readyState === 'loading') {

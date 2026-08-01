@@ -1,0 +1,6 @@
+@echo off
+echo Fixing permissions...
+docker exec -u root edora-moodle chmod -R 777 /bitnami/moodle
+docker exec -u root edora-moodle chmod -R 777 /bitnami/moodledata
+echo Done! Opening Moodle...
+start http://localhost:8082

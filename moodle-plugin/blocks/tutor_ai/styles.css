@@ -1,69 +1,219 @@
-/* Edora AI Tutor — styles de base (Phase 6 - stub pour Yasmine) */
+/* ── Edora AI Tutor — styles Phase 6 (Yasmine) ── */
+/* Charte : turquoise #14b8a6 | violet #7c3aed | rose #ec4899 */
 
 #edo-chat-root {
-    font-family: sans-serif;
+    font-family: 'Inter', 'Segoe UI', sans-serif;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    background: #ffffff;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    max-width: 380px;
+    width: 100%;
 }
 
-.edo-messages {
-    height: 280px;
-    overflow-y: auto;
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    padding: 12px;
+/* ── Header ── */
+.edo-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: #ffffff;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.edo-header__avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #14b8a6, #7c3aed);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.edo-header__info {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    background: #fafafa;
+    gap: 2px;
+}
+
+.edo-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: #111827;
+}
+
+.edo-subtitle {
+    font-size: 12px;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.edo-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.edo-dot--green { background: #22c55e; }
+.edo-dot--red   { background: #ef4444; }
+
+.edo-header__actions {
+    display: flex;
+    gap: 4px;
+}
+
+.edo-header__btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+.edo-header__btn:hover { background: #f3f4f6; }
+
+/* ── Messages ── */
+.edo-messages {
+    height: 300px;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: #f9fafb;
 }
 
 .edo-bubble {
     max-width: 85%;
     padding: 10px 14px;
     border-radius: 16px;
-    line-height: 1.5;
-    font-size: 14px;
+    line-height: 1.55;
+    font-size: 13.5px;
     word-break: break-word;
+    animation: bubbleIn 0.2s ease-out;
+}
+
+@keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .edo-bubble--user {
     align-self: flex-end;
-    background: #7c3aed;
-    color: white;
+    background: #14b8a6;
+    color: #ffffff;
     border-bottom-right-radius: 4px;
 }
 
 .edo-bubble--bot {
     align-self: flex-start;
-    background: #e0f7f4;
-    color: #1a1a2e;
+    background: #ffffff;
+    color: #111827;
+    border: 1px solid #e5e7eb;
     border-bottom-left-radius: 4px;
 }
 
 .edo-bubble--loading {
-    opacity: 0.7;
+    opacity: 0.75;
     font-style: italic;
+    color: #6b7280;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
 }
 
+/* ── Spinner ── */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.edo-spinner {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border: 2px solid #14b8a6;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+
+/* ── Raccourcis ── */
+.edo-shortcuts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 10px 14px;
+    background: #ffffff;
+    border-top: 1px solid #f0f0f0;
+}
+
+.edo-shortcut {
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #374151;
+    font-size: 12px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.edo-shortcut:hover {
+    border-color: #14b8a6;
+    background: #f0fdfa;
+    color: #0d9488;
+}
+
+/* ── Input ── */
 .edo-input-row {
     display: flex;
     gap: 8px;
+    padding: 10px 14px;
+    background: #ffffff;
+    border-top: 1px solid #f0f0f0;
+    align-items: center;
 }
 
 .edo-input {
     flex: 1;
     padding: 10px 14px;
-    border: 1px solid #d1d5db;
-    border-radius: 20px;
-    font-size: 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 24px;
+    font-size: 13.5px;
     outline: none;
+    background: #f9fafb;
+    color: #111827;
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
+
+.edo-input::placeholder { color: #9ca3af; }
 
 .edo-input:focus {
     border-color: #14b8a6;
-    box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.15);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
+    background: #ffffff;
 }
 
 .edo-send-btn {
@@ -78,32 +228,43 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s;
+    transition: background 0.2s, transform 0.1s;
+    flex-shrink: 0;
 }
 
-.edo-send-btn:hover { background: #0d9488; }
+.edo-send-btn:hover   { background: #0d9488; }
+.edo-send-btn:active  { transform: scale(0.95); }
 .edo-send-btn:disabled { background: #9ca3af; cursor: not-allowed; }
 
-.edo-header {
+/* ── Footer badges ── */
+.edo-footer {
     display: flex;
-    align-items: center;
-    gap: 6px;
-    padding-bottom: 4px;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: #f9fafb;
+    border-top: 1px solid #f0f0f0;
+    flex-wrap: wrap;
 }
 
-.edo-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
+.edo-badge {
+    font-size: 10.5px;
+    color: #0d9488;
+    background: #f0fdfa;
+    border: 1px solid #99f6e4;
+    border-radius: 20px;
+    padding: 3px 10px;
+    white-space: nowrap;
 }
 
-.edo-dot--green { background: #22c55e; }
-.edo-dot--red   { background: #ef4444; }
+/* ── Responsive mobile ── */
+@media (max-width: 320px) {
+    .edo-shortcuts { grid-template-columns: 1fr; }
+    .edo-footer    { gap: 4px; }
+    .edo-badge     { font-size: 10px; }
+}
 
-.edo-name     { font-weight: 600; font-size: 15px; color: #1a1a2e; }
-.edo-subtitle { font-size: 12px; color: #6b7280; }
-
+/* ── Unavailable state ── */
 .edo-unavailable {
     display: flex;
     align-items: center;
@@ -113,16 +274,82 @@
     padding: 8px;
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-.edo-spinner {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border: 2px solid #14b8a6;
-    border-top-color: transparent;
+
+/* ── Floating Button ── */
+.edo-fab {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    width: 56px;
+    height: 56px;
     border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    vertical-align: middle;
+    background: linear-gradient(135deg, #14b8a6, #7c3aed);
+    border: none;
+    cursor: pointer;
+    font-size: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(20,184,166,0.4);
+    transition: transform 0.2s, box-shadow 0.2s;
+    z-index: 9999;
+}
+
+.edo-fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(20,184,166,0.5);
+}
+
+.edo-fab--open {
+    transform: rotate(20deg) scale(1.05);
+}
+
+/* ── Panel ── */
+.edo-panel {
+    position: fixed;
+    bottom: 96px;
+    right: 28px;
+    width: 360px;
+    max-height: 560px;
+    border-radius: 16px;
+    border: 1px solid #e5e7eb;
+    background: #ffffff;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    display: none;
+    flex-direction: column;
+    z-index: 9998;
+    overflow: hidden;
+}
+
+.edo-panel--open {
+    display: flex;
+}
+
+/* ── Close button ── */
+.edo-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #6b7280;
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin-left: auto;
+    transition: background 0.15s;
+}
+
+.edo-close:hover {
+    background: #f3f4f6;
+    color: #111827;
+}
+
+/* ── Animation ouverture ── */
+@keyframes panelIn {
+    from { opacity: 0; transform: translateY(16px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.edo-panel--open {
+    display: flex;
+    animation: panelIn 0.2s ease-out;
 }

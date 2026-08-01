@@ -23,6 +23,7 @@ services:
     image: bitnamilegacy/moodle:latest
     container_name: edora-moodle
     restart: unless-stopped
+    
     depends_on:
       mariadb:
         condition: service_healthy
