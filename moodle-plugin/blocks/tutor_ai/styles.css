@@ -1,5 +1,5 @@
 /* ── Edora AI Tutor — styles Phase 6 (Yasmine) ── */
-/* Charte : turquoise #14b8a6 | violet #7c3aed | rose #ec4899 */
+/* Charte : turquoise #63D4D5 | violet #7c3aed | rose #ec4899 */
 
 #edo-chat-root {
     font-family: 'Inter', 'Segoe UI', sans-serif;
@@ -7,7 +7,6 @@
     flex-direction: column;
     gap: 0;
     border-radius: 16px;
-    overflow: hidden;
     border: 1px solid #e5e7eb;
     background: #ffffff;
     box-shadow: 0 4px 24px rgba(0,0,0,0.08);
@@ -29,12 +28,12 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #14b8a6, #7c3aed);
+    background: transparent;   /* ← plus de gradient */
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
     flex-shrink: 0;
+    overflow: hidden;
 }
 
 .edo-header__info {
@@ -116,7 +115,7 @@
 
 .edo-bubble--user {
     align-self: flex-end;
-    background: #14b8a6;
+    background: #63D4D5;
     color: #ffffff;
     border-bottom-right-radius: 4px;
 }
@@ -147,7 +146,7 @@
     display: inline-block;
     width: 11px;
     height: 11px;
-    border: 2px solid #14b8a6;
+    border: 2px solid #63D4D5;
     border-top-color: transparent;
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
@@ -181,7 +180,7 @@
 }
 
 .edo-shortcut:hover {
-    border-color: #14b8a6;
+    border-color: #63D4D5;
     background: #f0fdfa;
     color: #0d9488;
 }
@@ -211,13 +210,13 @@
 .edo-input::placeholder { color: #9ca3af; }
 
 .edo-input:focus {
-    border-color: #14b8a6;
+    border-color: #63D4D5;
     box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
     background: #ffffff;
 }
 
 .edo-send-btn {
-    background: #14b8a6;
+    background: #63D4D5;
     color: white;
     border: none;
     border-radius: 50%;
@@ -283,7 +282,7 @@
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #14b8a6, #7c3aed);
+    background: linear-gradient(135deg, #63D4D5, #7c3aed);
     border: none;
     cursor: pointer;
     font-size: 26px;
@@ -308,8 +307,9 @@
 .edo-panel {
     position: fixed;
     bottom: 96px;
-    right: 28px;
-    width: 360px;
+    right: 16px;
+    left: 16px;
+    width: auto;
     max-height: 560px;
     border-radius: 16px;
     border: 1px solid #e5e7eb;
@@ -352,4 +352,259 @@
 .edo-panel--open {
     display: flex;
     animation: panelIn 0.2s ease-out;
+}
+
+
+.edo-timestamp {
+    font-size: 10px;
+    color: #9ca3af;
+    margin-top: 4px;
+    text-align: right;
+}
+
+.edo-bubble--user .edo-timestamp {
+    color: rgba(255,255,255,0.7);
+}
+
+
+/* ── Actions bulle Edo ── */
+.edo-bubble-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: -6px;
+    margin-bottom: 8px;
+    align-self: flex-start;
+    padding-left: 4px;
+}
+
+.edo-action-btn {
+    background: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #6b7280;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.edo-action-btn:hover {
+    background: #f3f4f6;
+    color: #111827;
+}
+
+
+/* ── Thinking indicator ── */
+.edo-thinking {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.edo-thinking__text {
+    font-size: 13px;
+    color: #6b7280;
+    font-style: italic;
+}
+
+.edo-thinking__dots {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.edo-dot-anim {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    animation: dotBounce 1.2s infinite;
+}
+
+.edo-dot-anim:nth-child(2) { animation-delay: 0.2s; }
+.edo-dot-anim:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-6px); }
+}
+
+
+/* ── Icônes input ── */
+.edo-input-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #9ca3af;
+    padding: 4px;
+    border-radius: 6px;
+    transition: color 0.15s;
+    flex-shrink: 0;
+}
+
+.edo-input-icon:hover {
+    color: #63D4D5;
+}
+
+/* ── Icônes input ── */
+.edo-input-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #9ca3af;
+    padding: 4px;
+    border-radius: 6px;
+    transition: color 0.15s;
+    flex-shrink: 0;
+}
+
+.edo-input-icon:hover {
+    color: #63D4D5;
+}
+
+
+/* ── Ask another question ── */
+.edo-ask-another {
+    text-align: center;
+    padding: 6px 0;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.edo-ask-link {
+    color: #63D4D5;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.edo-ask-link:hover {
+    text-decoration: underline;
+    color: #0d9488;
+}
+
+
+.edo-shortcut {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.edo-input-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #9ca3af;
+    padding: 4px;
+    border-radius: 6px;
+    transition: color 0.15s;
+    flex-shrink: 0;
+}
+
+.edo-input-icon:hover { color: #63D4D5; }
+
+.edo-thinking {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.edo-thinking__text {
+    font-size: 13px;
+    color: #6b7280;
+    font-style: italic;
+}
+
+.edo-thinking__dots {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.edo-dot-anim {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    animation: dotBounce 1.2s infinite;
+}
+
+.edo-dot-anim:nth-child(2) { animation-delay: 0.2s; }
+.edo-dot-anim:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-6px); }
+}
+
+.edo-bubble-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: -6px;
+    margin-bottom: 8px;
+    align-self: flex-start;
+    padding-left: 4px;
+}
+
+.edo-action-btn {
+    background: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #6b7280;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.edo-action-btn:hover {
+    background: #f3f4f6;
+    color: #111827;
+}
+
+.edo-timestamp {
+    font-size: 10px;
+    color: #9ca3af;
+    margin-top: 4px;
+    text-align: right;
+}
+
+.edo-bubble--user .edo-timestamp {
+    color: rgba(255,255,255,0.7);
+}
+
+.edo-ask-another {
+    text-align: center;
+    padding: 6px 0;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.edo-ask-link {
+    color: #63D4D5;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.edo-ask-link:hover {
+    text-decoration: underline;
+    color: #0d9488;
+}
+.edo-shortcut {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #374151;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
 }
