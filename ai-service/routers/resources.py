@@ -11,6 +11,7 @@ from services.chunker import chunk_text
 from services.embeddings import get_embedding
 from services.chroma_service import store_chunks
 import os
+from fastapi import UploadFile, File, Form
 
 print("TOKEN UTILISE :", os.getenv("MOODLE_WS_TOKEN"))
 
@@ -154,6 +155,78 @@ async def process_resource(
             os.remove(file_path)
             logger.info(f"[BG] Fichier temporaire supprime : {file_path}")
 
+@router.post("/upload-file")
+async def upload_file(
+    file: UploadFile = File(...),
+    course_id: int = Form(...)
+):
+    """
+    Reçoit un fichier directement depuis le chat UI.
+    Pipeline : extraction → chunking → embeddings → ChromaDB
+    """
+    logger.info(f"[UPLOAD-FILE] Fichier reçu : {file.filename} | course_id={course_id}")
+
+    tmp_dir = os.getenv("TMP_DIR", "C:/Users/wiki/edora_uploads")
+    os.makedirs(tmp_dir, exist_ok=True)
+    file_path = f"{tmp_dir}/{file.filename}"
+
+    try:
+        # Sauvegarder le fichier temporairement
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        # Extraire le texte
+        extraction = extract_text(file_path)
+        if not extraction["success"]:
+            raise HTTPException(status_code=400, detail="Extraction échouée")
+
+        # Chunker
+        chunks = chunk_text(
+            text=extraction["text"],
+            source=file.filename,
+            course_id=course_id,
+            resource_id=0
+        )
+
+        # Embeddings
+        embedded_chunks = []
+        for chunk in chunks:
+            try:
+                embedding = get_embedding(chunk.page_content)
+                embedded_chunks.append({
+                    "text": chunk.page_content,
+                    "embedding": embedding,
+                    "metadata": chunk.metadata
+                })
+                await asyncio.sleep(0.7)
+            except Exception as e:
+                logger.error(f"Erreur embedding : {str(e)}")
+                continue
+
+        # Stocker dans ChromaDB
+        result = store_chunks(
+            course_id=course_id,
+            embedded_chunks=embedded_chunks
+        )
+
+        logger.info(f"[UPLOAD-FILE] {result['chunks_stored']} chunks stockés")
+
+        return {
+            "status": "ok",
+            "filename": file.filename,
+            "chunks_created": result["chunks_stored"]
+        }
+
+    except Exception as e:
+        logger.error(f"[UPLOAD-FILE] Erreur : {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            
+            
 
 async def _download_file(file_url: str, resource_id: int, resource_type: str = "pdf") -> str:
     """

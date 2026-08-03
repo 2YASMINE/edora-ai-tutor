@@ -5,6 +5,7 @@ from models.schemas import AskRequest, AskResponse, SourceChunk
 from services.embeddings import get_embedding
 from services.chroma_service import search_similar_chunks
 from services.gemini import ask_gemini
+from services.history_service import save_message, get_history
 
 router = APIRouter()
 
@@ -58,9 +59,28 @@ async def ask(request: AskRequest):
             detail=f"Erreur Gemini : {gemini_result.get('error', 'inconnue')}"
         )
 
+    # Étape 7 : Générer conversation_id
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+
+    # Étape 8 : Sauvegarder dans MariaDB
+    save_message(
+        user_id=request.student_id,
+        course_id=request.course_id,
+        conversation_id=conversation_id,
+        role="user",
+        message=request.question
+    )
+    save_message(
+        user_id=request.student_id,
+        course_id=request.course_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        message=gemini_result["answer"]
+    )
+
     return AskResponse(
         answer=gemini_result["answer"],
-        conversation_id=request.conversation_id or str(uuid.uuid4()),
+        conversation_id=conversation_id,
         sources=sources,
         found_in_course=gemini_result["found_in_course"],
         chunks_used=gemini_result["chunks_used"]

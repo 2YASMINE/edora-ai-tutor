@@ -48,7 +48,7 @@ class block_tutor_ai_observer {
         $resource_type = in_array($extension, $allowed) ? $extension : 'pdf';
 
         // Token Moodle pour acces authentifie aux fichiers
-        $token = '3f58f53f7abb33955e5b08d79575abc3';
+        $token = '55faba7139ae4aa384f0f89e1411ab53';
 
         // URL authentifiee du fichier via webservice/pluginfile.php
         $file_url =

@@ -1,15 +1,53 @@
-<div id="tutor-ai-chat">
-    <div id="tutor-ai-messages">
-        <div class="tutor-ai-bubble bot">
-            Bonjour ! Je suis votre assistant IA. Posez-moi une question sur le cours.
+<div id="edo-chat-root" data-api-url="{{apiUrl}}" data-course-id="{{courseId}}">
+
+    {{! Header }}
+    <div class="edo-header">
+        <div class="edo-header__avatar">🤖</div>
+        <div class="edo-header__info">
+            <span class="edo-name">AI Tutor</span>
+            <span class="edo-subtitle">
+                <span class="edo-dot edo-dot--green"></span> En ligne
+            </span>
+        </div>
+        <div class="edo-header__actions">
+            <button class="edo-header__btn" title="Agrandir">+</button>
+            <button class="edo-header__btn" title="Réduire">−</button>
         </div>
     </div>
-    <div id="tutor-ai-input-area">
+
+    {{! Messages }}
+    <div class="edo-messages" id="edo-messages">
+        <div class="edo-bubble edo-bubble--bot">
+            Bonjour ! Je suis Edo, votre tuteur IA 👋 Posez-moi une question sur le cours.
+        </div>
+    </div>
+
+    {{! Raccourcis }}
+    <div class="edo-shortcuts">
+        <button class="edo-shortcut">📖 Expliquer ce chapitre</button>
+        <button class="edo-shortcut">✏️ Générer un quiz</button>
+        <button class="edo-shortcut">💡 Donner un exemple</button>
+        <button class="edo-shortcut">📝 Résumer la leçon</button>
+    </div>
+
+    {{! Input }}
+    <div class="edo-input-row">
         <input 
             type="text" 
-            id="tutor-ai-input" 
-            placeholder="Posez votre question..."
+            id="edo-input" 
+            class="edo-input" 
+            placeholder="Posez une question sur ce cours..."
         />
-        <button id="tutor-ai-send">Envoyer</button>
+        <button id="edo-send" class="edo-send-btn" title="Envoyer">
+            ➤
+        </button>
     </div>
+
+    {{! Footer badges }}
+    <div class="edo-footer">
+        <span class="edo-badge">✓ Basé sur le cours</span>
+        <span class="edo-badge">✓ IA intégrée</span>
+        <span class="edo-badge">✓ RAG activé</span>
+    </div>
+
 </div>

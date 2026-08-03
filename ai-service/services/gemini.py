@@ -135,7 +135,7 @@ def _call_gemini_api(prompt: str) -> str:
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             temperature=0.3,
-            max_output_tokens=1024,
+            max_output_tokens=2048,
         )
     )
     return response.text
