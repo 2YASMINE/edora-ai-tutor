@@ -8,6 +8,8 @@ class block_tutor_ai extends block_base {
     }
 
     public function get_content() {
+        global $OUTPUT;  // ← déclarer $OUTPUT comme variable globale
+
         if ($this->content !== null) {
             return $this->content;
         }
@@ -32,9 +34,16 @@ class block_tutor_ai extends block_base {
         }
 
         $course_id = $this->page->course->id;
-        $api_url   ="http://localhost:8000";
+        $api_url   = "http://localhost:8000";
 
-        $this->content->text = '<div id="edo-chat-root" data-course-id="' . (int)$course_id . '" data-api-url="' . $api_url . '"></div>';
+        // URL de l'avatar hibou via Moodle
+        $avatarurl = $OUTPUT->image_url('edo-avatar', 'block_tutor_ai');
+
+        $this->content->text = '<div id="edo-chat-root"
+            data-course-id="' . (int)$course_id . '"
+            data-api-url="' . $api_url . '"
+            data-avatar-url="' . $avatarurl . '">
+        </div>';
 
         $this->page->requires->css('/blocks/tutor_ai/styles.css');
         $this->page->requires->js('/blocks/tutor_ai/amd/src/chat.js');

@@ -1,39 +1,107 @@
-/* ── Edora AI Tutor — styles Phase 6 (Yasmine) ── */
-/* Charte : turquoise #63D4D5 | violet #7c3aed | rose #ec4899 */
+/* ══════════════════════════════════════════════════════════════
+   EDORA AI TUTOR — styles Phase 6 redesign (Islem)
+   Palette : teal #0a9396 | deep #005f73 | orange #ee9b00 | light #94d2bd
+   Signature : halos lumineux + micro-3D + animations organiques
+══════════════════════════════════════════════════════════════ */
 
+/* ── Variables ───────────────────────────────────────────── */
+#edo-chat-root, #edo-panel, .edo-fab {
+    --teal:        #0a9396;
+    --teal-deep:   #005f73;
+    --teal-light:  #94d2bd;
+    --teal-xlight: #e9f5f2;
+    --orange:      #ee9b00;
+    --orange-deep: #ca6702;
+    --orange-light:#fde68a;
+    --green:       #2dc653;
+    --white:       #ffffff;
+    --bg:          #f4faf8;
+    --surface:     #ffffff;
+    --text:        #0d1b1e;
+    --text-muted:  #4a6670;
+    --border:      #d4e8e3;
+    --radius-xl:   20px;
+    --radius-lg:   14px;
+    --radius-md:   10px;
+}
+
+/* ── Root container ──────────────────────────────────────── */
 #edo-chat-root {
-    font-family: 'Inter', 'Segoe UI', sans-serif;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
     display: flex;
     flex-direction: column;
     gap: 0;
-    border-radius: 16px;
-    border: 1px solid #e5e7eb;
-    background: #ffffff;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-    max-width: 380px;
+    border-radius: var(--radius-xl);
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    overflow: hidden;
+    box-shadow:
+        0 0 0 1px rgba(10,147,150,0.08),
+        0 4px 24px rgba(0,95,115,0.10),
+        0 1px 4px rgba(0,0,0,0.06);
+    max-width: 420px;
     width: 100%;
 }
 
-/* ── Header ── */
+/* ── Header ──────────────────────────────────────────────── */
 .edo-header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 14px;
-    background: #ffffff;
-    border-bottom: 1px solid #f0f0f0;
+    gap: 12px;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, var(--teal-deep) 0%, var(--teal) 55%, #0bb4b7 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Orbe décorative 3D derrière le header */
+.edo-header::before {
+    content: '';
+    position: absolute;
+    top: -30px; right: -30px;
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(148,210,189,0.35) 0%, transparent 70%);
+    pointer-events: none;
+}
+.edo-header::after {
+    content: '';
+    position: absolute;
+    bottom: -20px; left: 30px;
+    width: 70px; height: 70px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(238,155,0,0.2) 0%, transparent 70%);
+    pointer-events: none;
 }
 
 .edo-header__avatar {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    background: transparent;   /* ← plus de gradient */
+    background: rgba(255,255,255,0.15);
+    border: 2px solid rgba(255,255,255,0.35);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     overflow: hidden;
+    /* Effet 3D subtil */
+    box-shadow:
+        0 2px 8px rgba(0,0,0,0.25),
+        inset 0 1px 0 rgba(255,255,255,0.25);
+    transform: perspective(100px) rotateY(0deg);
+    transition: transform 0.4s ease;
+    position: relative;
+    z-index: 1;
+}
+.edo-header__avatar:hover {
+    transform: perspective(100px) rotateY(8deg);
+}
+
+/* Avatar SVG robot/IA */
+.edo-header__avatar svg {
+    width: 26px; height: 26px;
+    fill: rgba(255,255,255,0.95);
 }
 
 .edo-header__info {
@@ -41,20 +109,37 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    position: relative;
+    z-index: 1;
 }
 
 .edo-name {
-    font-weight: 600;
-    font-size: 14px;
-    color: #111827;
+    font-weight: 700;
+    font-size: 15px;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: -0.01em;
+}
+
+.edo-name-badge {
+    font-size: 9px;
+    font-weight: 700;
+    background: var(--orange);
+    color: #fff;
+    border-radius: 4px;
+    padding: 2px 6px;
+    letter-spacing: 0.08em;
+    box-shadow: 0 1px 4px rgba(238,155,0,0.4);
 }
 
 .edo-subtitle {
-    font-size: 12px;
-    color: #6b7280;
+    font-size: 11.5px;
+    color: rgba(255,255,255,0.72);
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
 }
 
 .edo-dot {
@@ -62,91 +147,540 @@
     height: 7px;
     border-radius: 50%;
     display: inline-block;
+    flex-shrink: 0;
 }
-.edo-dot--green { background: #22c55e; }
-.edo-dot--red   { background: #ef4444; }
+.edo-dot--green {
+    background: var(--green);
+    box-shadow: 0 0 0 2px rgba(45,198,83,0.3);
+    animation: pulse-dot 2.5s ease-in-out infinite;
+}
+.edo-dot--red { background: #f87171; }
+
+@keyframes pulse-dot {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(45,198,83,0.3); }
+    50%       { box-shadow: 0 0 0 5px rgba(45,198,83,0.0); }
+}
 
 .edo-header__actions {
     display: flex;
-    gap: 4px;
+    gap: 5px;
+    position: relative;
+    z-index: 1;
 }
 
 .edo-header__btn {
-    width: 28px;
-    height: 28px;
+    width: 30px; height: 30px;
     border-radius: 8px;
-    border: 1px solid #e5e7eb;
-    background: #f9fafb;
-    color: #6b7280;
+    border: 1px solid rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.85);
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, transform 0.15s;
+    backdrop-filter: blur(4px);
+}
+.edo-header__btn:hover {
+    background: rgba(255,255,255,0.22);
+    transform: scale(1.08);
+}
+
+/* ── Zone messages ───────────────────────────────────────── */
+.edo-messages {
+    height: 340px;
+    overflow-y: auto;
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background: var(--bg);
+}
+
+.edo-messages::-webkit-scrollbar { width: 3px; }
+.edo-messages::-webkit-scrollbar-track { background: transparent; }
+.edo-messages::-webkit-scrollbar-thumb {
+    background: var(--teal-light);
+    border-radius: 3px;
+}
+
+/* ── Bulles ──────────────────────────────────────────────── */
+.edo-bubble {
+    max-width: 84%;
+    padding: 11px 15px;
+    border-radius: 18px;
+    line-height: 1.6;
+    font-size: 13.5px;
+    word-break: break-word;
+    animation: bubbleIn 0.28s cubic-bezier(0.34, 1.48, 0.64, 1) both;
+}
+
+@keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.94); }
+    to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* Bulle utilisateur — orange chaud */
+.edo-bubble--user {
+    align-self: flex-end;
+    background: linear-gradient(135deg, var(--orange) 0%, var(--orange-deep) 100%);
+    color: #ffffff;
+    border-bottom-right-radius: 5px;
+    box-shadow:
+        0 2px 12px rgba(238,155,0,0.30),
+        0 1px 3px rgba(0,0,0,0.10);
+}
+
+/* Halo orange derrière la bulle user */
+.edo-bubble--user::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 22px;
+    background: radial-gradient(ellipse, rgba(238,155,0,0.12) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* Bulle bot — blanc avec accent teal */
+.edo-bubble--bot {
+    align-self: flex-start;
+    background: var(--surface);
+    color: var(--text);
+    border: 1.5px solid var(--border);
+    border-bottom-left-radius: 5px;
+    box-shadow:
+        0 2px 12px rgba(10,147,150,0.08),
+        0 1px 3px rgba(0,0,0,0.05);
+    position: relative;
+    max-width: 90%;
+}
+
+/* Trait teal à gauche de la bulle bot */
+.edo-bubble--bot::after {
+    content: '';
+    position: absolute;
+    left: -1.5px; top: 14px; bottom: 14px;
+    width: 3px;
+    background: linear-gradient(180deg, var(--teal), var(--teal-light));
+    border-radius: 2px;
+}
+
+.edo-bubble--bot ul { margin: 8px 0 4px 0; padding-left: 18px; }
+.edo-bubble--bot li { margin-bottom: 4px; color: var(--text-muted); }
+
+/* ── Row bot avec avatar ─────────────────────────────────── */
+.edo-bot-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    max-width: 100%;
+}
+
+.edo-bot-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 2px solid var(--border);
+    background: var(--teal-xlight);
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 4px rgba(10,147,150,0.18);
+}
+.edo-bot-avatar svg {
+    width: 18px; height: 18px;
+    fill: var(--teal);
+}
+
+/* ── Loading / Thinking ─────────────────────────────────── */
+.edo-bubble--loading {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-bottom-left-radius: 5px;
+    align-self: flex-start;
+    padding: 13px 17px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+}
+
+.edo-thinking {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.edo-thinking__text {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+.edo-thinking__dots {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+.edo-dot-anim {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    animation: dotBounce 1.3s ease-in-out infinite;
+}
+.edo-dot-anim:nth-child(2) { animation-delay: 0.18s; }
+.edo-dot-anim:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes dotBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.55; }
+    30%            { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ── Timestamp ───────────────────────────────────────────── */
+.edo-timestamp {
+    font-size: 10px;
+    color: rgba(255,255,255,0.6);
+    margin-top: 6px;
+    text-align: right;
+}
+.edo-bubble--bot .edo-timestamp {
+    color: var(--text-muted);
+    opacity: 0.7;
+    text-align: left;
+}
+
+/* ── Actions sous bulle bot ─────────────────────────────── */
+.edo-bubble-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: -8px;
+    margin-bottom: 6px;
+    align-self: flex-start;
+    padding-left: 41px;
+    animation: fadeIn 0.3s ease both;
+    animation-delay: 0.15s;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.edo-action-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.edo-action-btn:hover {
+    background: var(--teal-xlight);
+    border-color: var(--teal-light);
+    color: var(--teal);
+}
+
+/* ── Suggestions de suivi ────────────────────────────────── */
+.edo-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px 14px 10px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+}
+.edo-suggestion-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 13px;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.edo-suggestion-btn:hover {
+    border-color: var(--teal);
+    background: var(--teal-xlight);
+    color: var(--teal-deep);
+    transform: translateX(3px);
+    box-shadow: 0 2px 10px rgba(10,147,150,0.14);
+}
+.edo-suggestion-icon {
+    width: 24px; height: 24px;
+    border-radius: 7px;
+    background: var(--teal-xlight);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--teal);
+    transition: background 0.15s;
+}
+.edo-suggestion-btn:hover .edo-suggestion-icon {
+    background: rgba(10,147,150,0.15);
+}
+
+/* ── Shortcuts 2×2 ───────────────────────────────────────── */
+.edo-shortcuts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+}
+
+.edo-shortcut {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 10px 8px;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    /* Effet 3D */
+    transform: perspective(200px) translateZ(0);
+    transition:
+        transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+        border-color 0.15s,
+        background 0.15s,
+        box-shadow 0.15s,
+        color 0.15s;
+    box-shadow:
+        0 1px 3px rgba(0,0,0,0.06),
+        0 1px 0 rgba(255,255,255,0.9) inset;
+}
+
+.edo-shortcut:hover {
+    border-color: var(--teal);
+    background: var(--teal-xlight);
+    color: var(--teal-deep);
+    transform: perspective(200px) translateZ(6px) translateY(-2px);
+    box-shadow:
+        0 6px 20px rgba(10,147,150,0.18),
+        0 1px 0 rgba(255,255,255,0.9) inset;
+}
+.edo-shortcut:active {
+    transform: perspective(200px) translateZ(2px) translateY(0);
+    box-shadow: 0 2px 6px rgba(10,147,150,0.12);
+}
+
+/* Icônes shortcuts */
+.edo-shortcut-icon {
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: transform 0.2s ease;
+}
+.edo-shortcut:hover .edo-shortcut-icon {
+    transform: scale(1.15) rotate(-3deg);
+}
+.edo-shortcut-icon--teal   { background: rgba(10,147,150,0.12); color: var(--teal); }
+.edo-shortcut-icon--orange { background: rgba(238,155,0,0.12);  color: var(--orange-deep); }
+.edo-shortcut-icon--green  { background: rgba(45,198,83,0.12);  color: #1a9e42; }
+.edo-shortcut-icon--deep   { background: rgba(0,95,115,0.10);   color: var(--teal-deep); }
+
+/* ── Input row ───────────────────────────────────────────── */
+.edo-input-row {
+    display: flex;
+    gap: 7px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    align-items: center;
+}
+
+.edo-input {
+    flex: 1;
+    padding: 10px 13px;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    font-size: 13.5px;
+    outline: none;
+    background: var(--bg);
+    color: var(--text);
+    transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+}
+.edo-input::placeholder { color: var(--text-muted); opacity: 0.7; }
+.edo-input:focus {
+    border-color: var(--teal);
+    box-shadow:
+        0 0 0 3px rgba(10,147,150,0.12),
+        0 1px 4px rgba(10,147,150,0.10);
+    background: var(--surface);
+}
+
+.edo-input-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 15px;
+    color: var(--text-muted);
+    padding: 6px;
+    border-radius: 8px;
+    transition: color 0.15s, background 0.15s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.edo-input-icon:hover { color: var(--teal); background: var(--teal-xlight); }
+
+/* Bouton envoyer — 3D prominent */
+.edo-send-btn {
+    background: linear-gradient(145deg, var(--teal) 0%, var(--teal-deep) 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    width: 40px; height: 40px;
     cursor: pointer;
     font-size: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.15s;
+    flex-shrink: 0;
+    /* Effet 3D */
+    transform: perspective(200px) translateZ(0);
+    box-shadow:
+        0 4px 12px rgba(10,147,150,0.35),
+        0 1px 3px rgba(0,0,0,0.15),
+        inset 0 1px 0 rgba(255,255,255,0.2);
+    transition:
+        transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+        box-shadow 0.18s;
 }
-.edo-header__btn:hover { background: #f3f4f6; }
+.edo-send-btn:hover {
+    transform: perspective(200px) translateZ(8px) translateY(-2px);
+    box-shadow:
+        0 8px 24px rgba(10,147,150,0.45),
+        0 2px 6px rgba(0,0,0,0.15),
+        inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.edo-send-btn:active {
+    transform: perspective(200px) translateZ(2px) translateY(0) scale(0.96);
+    box-shadow: 0 2px 8px rgba(10,147,150,0.30);
+}
+.edo-send-btn:disabled {
+    background: #c8d8d5;
+    box-shadow: none;
+    cursor: not-allowed;
+    transform: none;
+}
 
-/* ── Messages ── */
-.edo-messages {
-    height: 300px;
-    overflow-y: auto;
-    padding: 14px;
+/* ── Footer ──────────────────────────────────────────────── */
+.edo-footer {
     display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 16px 9px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+}
+.edo-footer-icon { color: var(--text-muted); flex-shrink: 0; }
+.edo-footer-text {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 1.4;
+}
+
+/* ── FAB flottant ────────────────────────────────────────── */
+.edo-fab {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    width: 58px; height: 58px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, var(--teal) 0%, var(--teal-deep) 100%);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow:
+        0 6px 24px rgba(10,147,150,0.45),
+        0 2px 6px rgba(0,0,0,0.15),
+        inset 0 1px 0 rgba(255,255,255,0.2);
+    transition:
+        transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+        box-shadow 0.2s;
+    z-index: 9999;
+    overflow: hidden;
+}
+.edo-fab:hover {
+    transform: scale(1.12) perspective(200px) translateZ(5px);
+    box-shadow:
+        0 10px 32px rgba(10,147,150,0.55),
+        0 3px 8px rgba(0,0,0,0.18),
+        inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.edo-fab--open {
+    transform: scale(1.05);
+    box-shadow: 0 8px 28px rgba(10,147,150,0.5);
+}
+
+/* ── Panel flottant ──────────────────────────────────────── */
+.edo-panel {
+    position: fixed;
+    bottom: 102px; right: 20px;
+    width: 400px;
+    max-width: calc(100vw - 40px);
+    max-height: 640px;
+    border-radius: var(--radius-xl);
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    box-shadow:
+        0 16px 56px rgba(0,95,115,0.18),
+        0 4px 16px rgba(0,0,0,0.10),
+        0 0 0 1px rgba(10,147,150,0.06);
+    display: none;
     flex-direction: column;
-    gap: 10px;
-    background: #f9fafb;
+    z-index: 9998;
+    overflow: hidden;
+}
+@keyframes panelIn {
+    from { opacity: 0; transform: translateY(18px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+.edo-panel--open {
+    display: flex;
+    animation: panelIn 0.28s cubic-bezier(0.34, 1.48, 0.64, 1);
 }
 
-.edo-bubble {
-    max-width: 85%;
-    padding: 10px 14px;
-    border-radius: 16px;
-    line-height: 1.55;
-    font-size: 13.5px;
-    word-break: break-word;
-    animation: bubbleIn 0.2s ease-out;
+/* ── État indisponible ───────────────────────────────────── */
+.edo-unavailable {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 8px;
 }
 
-@keyframes bubbleIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-.edo-bubble--user {
-    align-self: flex-end;
-    background: #63D4D5;
-    color: #ffffff;
-    border-bottom-right-radius: 4px;
-}
-
-.edo-bubble--bot {
-    align-self: flex-start;
-    background: #ffffff;
-    color: #111827;
-    border: 1px solid #e5e7eb;
-    border-bottom-left-radius: 4px;
-}
-
-.edo-bubble--loading {
-    opacity: 0.75;
-    font-style: italic;
-    color: #6b7280;
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    align-self: flex-start;
-    border-bottom-left-radius: 4px;
-}
-
-/* ── Spinner ── */
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
+/* ── Spinner ─────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
 .edo-spinner {
     display: inline-block;
-    width: 11px;
-    height: 11px;
-    border: 2px solid #63D4D5;
+    width: 12px; height: 12px;
+    border: 2px solid var(--teal);
     border-top-color: transparent;
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
@@ -154,457 +688,11 @@
     margin-right: 6px;
 }
 
-/* ── Raccourcis ── */
-.edo-shortcuts {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    padding: 10px 14px;
-    background: #ffffff;
-    border-top: 1px solid #f0f0f0;
-}
-
-.edo-shortcut {
-    padding: 8px 10px;
-    border-radius: 10px;
-    border: 1px solid #e5e7eb;
-    background: #f9fafb;
-    color: #374151;
-    font-size: 12px;
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.15s;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.edo-shortcut:hover {
-    border-color: #63D4D5;
-    background: #f0fdfa;
-    color: #0d9488;
-}
-
-/* ── Input ── */
-.edo-input-row {
-    display: flex;
-    gap: 8px;
-    padding: 10px 14px;
-    background: #ffffff;
-    border-top: 1px solid #f0f0f0;
-    align-items: center;
-}
-
-.edo-input {
-    flex: 1;
-    padding: 10px 14px;
-    border: 1px solid #e5e7eb;
-    border-radius: 24px;
-    font-size: 13.5px;
-    outline: none;
-    background: #f9fafb;
-    color: #111827;
-    transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.edo-input::placeholder { color: #9ca3af; }
-
-.edo-input:focus {
-    border-color: #63D4D5;
-    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
-    background: #ffffff;
-}
-
-.edo-send-btn {
-    background: #63D4D5;
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    cursor: pointer;
-    font-size: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.2s, transform 0.1s;
-    flex-shrink: 0;
-}
-
-.edo-send-btn:hover   { background: #0d9488; }
-.edo-send-btn:active  { transform: scale(0.95); }
-.edo-send-btn:disabled { background: #9ca3af; cursor: not-allowed; }
-
-/* ── Footer badges ── */
-.edo-footer {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    padding: 8px 14px;
-    background: #f9fafb;
-    border-top: 1px solid #f0f0f0;
-    flex-wrap: wrap;
-}
-
-.edo-badge {
-    font-size: 10.5px;
-    color: #0d9488;
-    background: #f0fdfa;
-    border: 1px solid #99f6e4;
-    border-radius: 20px;
-    padding: 3px 10px;
-    white-space: nowrap;
-}
-
-/* ── Responsive mobile ── */
-@media (max-width: 320px) {
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 480px) {
+    .edo-panel { right: 10px; left: 10px; width: auto; bottom: 88px; }
     .edo-shortcuts { grid-template-columns: 1fr; }
-    .edo-footer    { gap: 4px; }
-    .edo-badge     { font-size: 10px; }
-}
-
-/* ── Unavailable state ── */
-.edo-unavailable {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: #6b7280;
-    font-size: 13px;
-    padding: 8px;
-}
-
-
-/* ── Floating Button ── */
-.edo-fab {
-    position: fixed;
-    bottom: 28px;
-    right: 28px;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #63D4D5, #7c3aed);
-    border: none;
-    cursor: pointer;
-    font-size: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 16px rgba(20,184,166,0.4);
-    transition: transform 0.2s, box-shadow 0.2s;
-    z-index: 9999;
-}
-
-.edo-fab:hover {
-    transform: scale(1.1);
-    box-shadow: 0 6px 20px rgba(20,184,166,0.5);
-}
-
-.edo-fab--open {
-    transform: rotate(20deg) scale(1.05);
-}
-
-/* ── Panel ── */
-.edo-panel {
-    position: fixed;
-    bottom: 96px;
-    right: 16px;
-    left: 16px;
-    width: auto;
-    max-height: 560px;
-    border-radius: 16px;
-    border: 1px solid #e5e7eb;
-    background: #ffffff;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-    display: none;
-    flex-direction: column;
-    z-index: 9998;
-    overflow: hidden;
-}
-
-.edo-panel--open {
-    display: flex;
-}
-
-/* ── Close button ── */
-.edo-close {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 16px;
-    color: #6b7280;
-    padding: 4px 8px;
-    border-radius: 6px;
-    margin-left: auto;
-    transition: background 0.15s;
-}
-
-.edo-close:hover {
-    background: #f3f4f6;
-    color: #111827;
-}
-
-/* ── Animation ouverture ── */
-@keyframes panelIn {
-    from { opacity: 0; transform: translateY(16px) scale(0.97); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.edo-panel--open {
-    display: flex;
-    animation: panelIn 0.2s ease-out;
-}
-
-
-.edo-timestamp {
-    font-size: 10px;
-    color: #9ca3af;
-    margin-top: 4px;
-    text-align: right;
-}
-
-.edo-bubble--user .edo-timestamp {
-    color: rgba(255,255,255,0.7);
-}
-
-
-/* ── Actions bulle Edo ── */
-.edo-bubble-actions {
-    display: flex;
-    gap: 6px;
-    margin-top: -6px;
-    margin-bottom: 8px;
-    align-self: flex-start;
-    padding-left: 4px;
-}
-
-.edo-action-btn {
-    background: none;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 3px 8px;
-    font-size: 11px;
-    color: #6b7280;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.edo-action-btn:hover {
-    background: #f3f4f6;
-    color: #111827;
-}
-
-
-/* ── Thinking indicator ── */
-.edo-thinking {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.edo-thinking__text {
-    font-size: 13px;
-    color: #6b7280;
-    font-style: italic;
-}
-
-.edo-thinking__dots {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-}
-
-.edo-dot-anim {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    display: inline-block;
-    animation: dotBounce 1.2s infinite;
-}
-
-.edo-dot-anim:nth-child(2) { animation-delay: 0.2s; }
-.edo-dot-anim:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes dotBounce {
-    0%, 60%, 100% { transform: translateY(0); }
-    30% { transform: translateY(-6px); }
-}
-
-
-/* ── Icônes input ── */
-.edo-input-icon {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 16px;
-    color: #9ca3af;
-    padding: 4px;
-    border-radius: 6px;
-    transition: color 0.15s;
-    flex-shrink: 0;
-}
-
-.edo-input-icon:hover {
-    color: #63D4D5;
-}
-
-/* ── Icônes input ── */
-.edo-input-icon {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 16px;
-    color: #9ca3af;
-    padding: 4px;
-    border-radius: 6px;
-    transition: color 0.15s;
-    flex-shrink: 0;
-}
-
-.edo-input-icon:hover {
-    color: #63D4D5;
-}
-
-
-/* ── Ask another question ── */
-.edo-ask-another {
-    text-align: center;
-    padding: 6px 0;
-    font-size: 12px;
-    color: #6b7280;
-}
-
-.edo-ask-link {
-    color: #63D4D5;
-    text-decoration: none;
-    font-weight: 500;
-}
-
-.edo-ask-link:hover {
-    text-decoration: underline;
-    color: #0d9488;
-}
-
-
-.edo-shortcut {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-}
-
-.edo-input-icon {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 16px;
-    color: #9ca3af;
-    padding: 4px;
-    border-radius: 6px;
-    transition: color 0.15s;
-    flex-shrink: 0;
-}
-
-.edo-input-icon:hover { color: #63D4D5; }
-
-.edo-thinking {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.edo-thinking__text {
-    font-size: 13px;
-    color: #6b7280;
-    font-style: italic;
-}
-
-.edo-thinking__dots {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-}
-
-.edo-dot-anim {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    display: inline-block;
-    animation: dotBounce 1.2s infinite;
-}
-
-.edo-dot-anim:nth-child(2) { animation-delay: 0.2s; }
-.edo-dot-anim:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes dotBounce {
-    0%, 60%, 100% { transform: translateY(0); }
-    30% { transform: translateY(-6px); }
-}
-
-.edo-bubble-actions {
-    display: flex;
-    gap: 6px;
-    margin-top: -6px;
-    margin-bottom: 8px;
-    align-self: flex-start;
-    padding-left: 4px;
-}
-
-.edo-action-btn {
-    background: none;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 3px 8px;
-    font-size: 11px;
-    color: #6b7280;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.edo-action-btn:hover {
-    background: #f3f4f6;
-    color: #111827;
-}
-
-.edo-timestamp {
-    font-size: 10px;
-    color: #9ca3af;
-    margin-top: 4px;
-    text-align: right;
-}
-
-.edo-bubble--user .edo-timestamp {
-    color: rgba(255,255,255,0.7);
-}
-
-.edo-ask-another {
-    text-align: center;
-    padding: 6px 0;
-    font-size: 12px;
-    color: #6b7280;
-}
-
-.edo-ask-link {
-    color: #63D4D5;
-    text-decoration: none;
-    font-weight: 500;
-}
-
-.edo-ask-link:hover {
-    text-decoration: underline;
-    color: #0d9488;
-}
-.edo-shortcut {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    padding: 8px 10px;
-    border-radius: 10px;
-    border: 1px solid #e5e7eb;
-    background: #f9fafb;
-    color: #374151;
-    font-size: 12px;
-    cursor: pointer;
-    transition: all 0.15s;
+    .edo-footer-text { font-size: 10px; }
+    .edo-bubble-actions { padding-left: 0; }
+    .edo-fab { bottom: 20px; right: 16px; width: 52px; height: 52px; }
 }
