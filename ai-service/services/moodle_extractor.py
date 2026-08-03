@@ -12,8 +12,6 @@ MOODLE_BASE_URL = os.getenv("MOODLE_BASE_URL", "http://localhost:8082")
 MOODLE_WS_TOKEN = os.getenv("MOODLE_WS_TOKEN", "")
 print("===== MOODLE EXTRACTOR LOADED =====")
 print("ENV PATH:", env_path)
-print("MOODLE URL:", MOODLE_BASE_URL)
-print("TOKEN:", MOODLE_WS_TOKEN)
 print("===================================")
 
 async def extract_course_content(course_id: int) -> dict:

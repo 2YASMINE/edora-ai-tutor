@@ -13,7 +13,7 @@ from services.chroma_service import store_chunks
 import os
 from fastapi import UploadFile, File, Form
 
-print("TOKEN UTILISE :", os.getenv("MOODLE_WS_TOKEN"))
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
