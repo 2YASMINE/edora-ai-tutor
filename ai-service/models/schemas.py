@@ -24,7 +24,8 @@ class AskResponse(BaseModel):
     conversation_id: str
     sources: List[SourceChunk]
     found_in_course: bool
-    chunks_used: int   # ← ajout pour debug + Phase 6
+    chunks_used: int   
+    follow_up_questions: Optional[List[str]] = []
 
 # Request /upload-resource
 class UploadResourceRequest(BaseModel):
