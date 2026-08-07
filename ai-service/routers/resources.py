@@ -4,16 +4,14 @@ import logging
 import asyncio
 
 from urllib.parse import urlparse, unquote
-from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, UploadFile, File, Form
 from models.schemas import UploadResourceRequest, UploadResourceResponse
 from services.document_extractor import extract_text
 from services.chunker import chunk_text
 from services.embeddings import get_embedding
 from services.chroma_service import store_chunks
-import os
-from fastapi import UploadFile, File, Form
 
-
+print("TOKEN UTILISE :", os.getenv("MOODLE_WS_TOKEN"))
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,11 +23,6 @@ async def upload_resource(
     req: Request,
     background_tasks: BackgroundTasks
 ):
-    """
-    Reçoit la ressource Moodle et repond immediatement.
-    Le traitement lourd (extraction, embeddings, ChromaDB)
-    se fait en arriere-plan pour ne pas bloquer Moodle.
-    """
     logger.info("========== NOUVELLE RESSOURCE ==========")
     logger.info(f"IP SOURCE     : {req.client.host}")
     logger.info(f"Course ID     : {request.course_id}")
@@ -37,7 +30,6 @@ async def upload_resource(
     logger.info(f"Resource type : {request.resource_type}")
     logger.info(f"File URL      : {request.file_url}")
 
-    # Lancer le traitement en arriere-plan
     background_tasks.add_task(
         process_resource,
         request.file_url,
@@ -46,7 +38,6 @@ async def upload_resource(
         request.course_id
     )
 
-    # Repondre immediatement a Moodle (evite le timeout de 10s)
     return UploadResourceResponse(
         status="processing",
         resource_id=request.resource_id,
@@ -60,14 +51,6 @@ async def process_resource(
     resource_type: str,
     course_id: int
 ):
-    """
-    Pipeline complet en arriere-plan :
-    1. Telecharger le fichier depuis Moodle
-    2. Extraire le texte
-    3. Chunker le texte
-    4. Generer les embeddings (avec pause pour rate limit)
-    5. Stocker dans ChromaDB
-    """
     file_path = None
 
     try:
@@ -97,7 +80,6 @@ async def process_resource(
             return
 
         # ── Etape 4 : Embeddings avec rate limiting ──
-        # Gemini free tier : 100 req/min → pause de 0.7s entre chaque appel
         embedded_chunks = []
         for i, chunk in enumerate(chunks):
             logger.info(f"[BG] Embedding {i+1}/{len(chunks)}...")
@@ -110,11 +92,9 @@ async def process_resource(
                 })
             except Exception as e:
                 logger.error(f"[BG] Erreur embedding chunk {i+1} : {str(e)}")
-                # Pause plus longue si rate limit atteint
                 if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                     logger.info("[BG] Rate limit atteint — pause 60s...")
                     await asyncio.sleep(60)
-                    # Reessayer ce chunk
                     try:
                         embedding = get_embedding(chunk.page_content)
                         embedded_chunks.append({
@@ -126,7 +106,6 @@ async def process_resource(
                         logger.error(f"[BG] Echec definitif chunk {i+1} : {str(e2)}")
                         continue
 
-            # Pause entre chaque appel pour respecter 100 req/min
             await asyncio.sleep(0.7)
 
         logger.info(f"[BG] {len(embedded_chunks)} embeddings generes")
@@ -149,21 +128,17 @@ async def process_resource(
 
     except Exception as e:
         logger.error(f"[BG] Erreur inattendue : {str(e)}")
-
     finally:
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
             logger.info(f"[BG] Fichier temporaire supprime : {file_path}")
+
 
 @router.post("/upload-file")
 async def upload_file(
     file: UploadFile = File(...),
     course_id: int = Form(...)
 ):
-    """
-    Reçoit un fichier directement depuis le chat UI.
-    Pipeline : extraction → chunking → embeddings → ChromaDB
-    """
     logger.info(f"[UPLOAD-FILE] Fichier reçu : {file.filename} | course_id={course_id}")
 
     tmp_dir = os.getenv("TMP_DIR", "C:/Users/wiki/edora_uploads")
@@ -171,17 +146,14 @@ async def upload_file(
     file_path = f"{tmp_dir}/{file.filename}"
 
     try:
-        # Sauvegarder le fichier temporairement
         with open(file_path, "wb") as f:
             content = await file.read()
             f.write(content)
 
-        # Extraire le texte
         extraction = extract_text(file_path)
         if not extraction["success"]:
             raise HTTPException(status_code=400, detail="Extraction échouée")
 
-        # Chunker
         chunks = chunk_text(
             text=extraction["text"],
             source=file.filename,
@@ -189,7 +161,6 @@ async def upload_file(
             resource_id=0
         )
 
-        # Embeddings
         embedded_chunks = []
         for chunk in chunks:
             try:
@@ -204,7 +175,6 @@ async def upload_file(
                 logger.error(f"Erreur embedding : {str(e)}")
                 continue
 
-        # Stocker dans ChromaDB
         result = store_chunks(
             course_id=course_id,
             embedded_chunks=embedded_chunks
@@ -225,15 +195,9 @@ async def upload_file(
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
-            
-            
+
 
 async def _download_file(file_url: str, resource_id: int, resource_type: str = "pdf") -> str:
-    """
-    Telecharge un fichier depuis une URL Moodle authentifiee.
-    DOWNLOAD_METHOD=session → session login (Windows natif)
-    DOWNLOAD_METHOD=token   → tokenpluginfile direct
-    """
     tmp_dir = os.getenv("TMP_DIR", "C:/Users/wiki/edora_uploads")
     os.makedirs(tmp_dir, exist_ok=True)
 
@@ -241,12 +205,14 @@ async def _download_file(file_url: str, resource_id: int, resource_type: str = "
     ws_token = os.getenv("MOODLE_WS_TOKEN", "")
     download_method = os.getenv("DOWNLOAD_METHOD", "session")
 
-    # Remplacer host.docker.internal par l'URL locale
     file_url = file_url.replace("http://host.docker.internal:8082", moodle_url)
 
     if download_method == "session":
-        # Convertir tokenpluginfile → pluginfile pour session login
         file_url = file_url.replace(f"tokenpluginfile.php/{ws_token}", "pluginfile.php")
+        file_url = file_url.replace("/webservice/pluginfile.php", "/pluginfile.php")
+        if "?token=" in file_url:
+            file_url = file_url.split("?token=")[0]
+        logger.info(f"URL NETTOYEE = {file_url}")
 
     logger.info(f"DOWNLOAD_METHOD = {download_method}")
     logger.info(f"URL FINALE = {file_url}")
@@ -275,28 +241,39 @@ async def _download_file(file_url: str, resource_id: int, resource_type: str = "
         ) as client:
 
             if download_method == "session":
-                # Etape 1 : Recuperer le logintoken
                 import re
                 login_url = f"{moodle_url}/login/index.php"
                 login_page = await client.get(login_url)
                 token_match = re.search(r'name="logintoken" value="([^"]+)"', login_page.text)
                 login_token = token_match.group(1) if token_match else ""
 
-                # Etape 2 : Se connecter
                 await client.post(login_url, data={
                     "username": os.getenv("MOODLE_ADMIN_USER", "admin"),
                     "password": os.getenv("MOODLE_ADMIN_PASSWORD", "Edora2026!"),
                     "logintoken": login_token
                 })
                 logger.info("Connexion Moodle effectuee via session")
+                logger.info(f"Cookies obtenus : {dict(client.cookies)}")
 
-            # Telecharger le fichier
             response = await client.get(file_url)
             logger.info(f"Reponse Moodle : HTTP {response.status_code}")
             response.raise_for_status()
 
+            content = response.content
+            logger.info(f"[BG] Taille fichier reçu : {len(content)} octets")
+            logger.info(f"[BG] Premiers octets : {content[:20]}")
+
+            if len(content) < 100:
+                raise Exception(
+                    f"Fichier trop petit ({len(content)} octets) — probablement une page d'erreur HTML"
+                )
+
+            if extension == ".pdf" and content[:4] != b'%PDF':
+                logger.error(f"[BG] Contenu reçu (pas un PDF) : {content[:200]}")
+                raise Exception("Le fichier téléchargé n'est pas un PDF valide")
+
             with open(file_path, "wb") as f:
-                f.write(response.content)
+                f.write(content)
 
         return file_path
 
