@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 import logging
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
-
 logger = logging.getLogger("edora.history")
+
 
 def get_connection():
     """Connexion à MariaDB."""
@@ -24,7 +24,7 @@ def save_message(user_id: int, course_id: int, conversation_id: str, role: str, 
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO edora_conversations 
+            INSERT INTO edora_conversations
             (user_id, course_id, conversation_id, role, message)
             VALUES (%s, %s, %s, %s, %s)
         """, (user_id, course_id, conversation_id, role, message))
@@ -74,3 +74,118 @@ def get_user_history(user_id: int, course_id: int) -> list:
     except Exception as e:
         logger.error(f"Erreur récupération historique utilisateur : {str(e)}")
         return []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GESTION DU NIVEAU ÉTUDIANT
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_student_level(user_id: int, course_id: int) -> dict:
+    """
+    Récupère le niveau détecté d'un étudiant pour un cours donné.
+    Retourne : {level, score, quiz_done} ou {level: None, quiz_done: False}
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT student_level, level_score, level_quiz_done
+            FROM edora_conversations
+            WHERE user_id = %s AND course_id = %s
+              AND student_level IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (user_id, course_id))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if row:
+            return {
+                "level":     row["student_level"],
+                "score":     row["level_score"],
+                "quiz_done": bool(row["level_quiz_done"])
+            }
+        # Vérifier si le quiz a été fait (même sans niveau stocké)
+        conn2 = get_connection()
+        cursor2 = conn2.cursor(dictionary=True)
+        cursor2.execute("""
+            SELECT level_quiz_done
+            FROM edora_conversations
+            WHERE user_id = %s AND course_id = %s
+              AND level_quiz_done = 1
+            LIMIT 1
+        """, (user_id, course_id))
+        row2 = cursor2.fetchone()
+        cursor2.close()
+        conn2.close()
+        return {
+            "level":     None,
+            "score":     None,
+            "quiz_done": bool(row2) if row2 else False
+        }
+    except Exception as e:
+        logger.error(f"Erreur récupération niveau étudiant : {str(e)}")
+        return {"level": None, "score": None, "quiz_done": False}
+
+
+def save_student_level(user_id: int, course_id: int,
+                       conversation_id: str, level: str, score: int):
+    """
+    Sauvegarde le niveau détecté de l'étudiant.
+    Met à jour toutes les lignes de la conversation courante
+    et marque le quiz comme complété.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Mettre à jour la conversation courante
+        cursor.execute("""
+            UPDATE edora_conversations
+            SET student_level   = %s,
+                level_score     = %s,
+                level_quiz_done = 1
+            WHERE user_id = %s AND course_id = %s
+        """, (level, score, user_id, course_id))
+
+        # Si aucune ligne n'existe encore (première interaction),
+        # insérer une ligne de référence
+        if cursor.rowcount == 0:
+            cursor.execute("""
+                INSERT INTO edora_conversations
+                (user_id, course_id, conversation_id, role,
+                 message, student_level, level_score, level_quiz_done)
+                VALUES (%s, %s, %s, 'system',
+                        'Quiz de niveau complété', %s, %s, 1)
+            """, (user_id, course_id, conversation_id, level, score))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logger.info(
+            f"Niveau étudiant sauvegardé — user_id={user_id} "
+            f"course_id={course_id} level={level} score={score}/10"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Erreur sauvegarde niveau étudiant : {str(e)}")
+        return False
+
+
+def quiz_already_done(user_id: int, course_id: int) -> bool:
+    """Vérifie rapidement si l'étudiant a déjà fait le quiz de niveau."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 1 FROM edora_conversations
+            WHERE user_id = %s AND course_id = %s AND level_quiz_done = 1
+            LIMIT 1
+        """, (user_id, course_id))
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return result is not None
+    except Exception as e:
+        logger.error(f"Erreur vérification quiz niveau : {str(e)}")
+        return False
