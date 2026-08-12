@@ -26,6 +26,15 @@ class AskResponse(BaseModel):
     found_in_course: bool
     chunks_used: int   
     follow_up_questions: Optional[List[str]] = []
+    
+    class AskResponse(BaseModel):
+     answer: str
+    conversation_id: str
+    sources: List[SourceChunk]
+    found_in_course: bool
+    chunks_used: int   
+    follow_up_questions: Optional[List[str]] = []
+    is_quiz_json: Optional[bool] = False  # ← ajouter cette ligne
 
 # Request /upload-resource
 class UploadResourceRequest(BaseModel):

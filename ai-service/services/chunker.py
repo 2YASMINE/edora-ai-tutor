@@ -7,7 +7,7 @@ def chunk_text(
     source: str = "unknown",
     course_id: int = 0,
     resource_id: int = 0,
-    chunk_size: int = 500,
+    chunk_size: int = 800,
     chunk_overlap: int = 50
 ) -> List[Document]:
     """

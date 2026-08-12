@@ -7,7 +7,8 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+load_dotenv(dotenv_path=os.path.join(
+    os.path.dirname(__file__), '..', '..', '.env'))
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -19,15 +20,18 @@ logger = logging.getLogger("edora.gemini")
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-GEMINI_TIMEOUT     = int(os.getenv("GEMINI_TIMEOUT", "60"))
-GEMINI_RETRIES     = 3
+GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "60"))
+GEMINI_RETRIES = 3
 GEMINI_RETRY_DELAY = 5
-HISTORY_WINDOW     = 6
-MAX_INPUT_CHARS    = 500
-MAX_OUTPUT_TOKENS  = 2048
-MAX_OUTPUT_TOKENS_QUIZ = 4096   # quiz 10 questions nécessite plus de tokens
+HISTORY_WINDOW = 6
+MAX_INPUT_CHARS = 500
+MAX_OUTPUT_TOKENS = 2048
+# Quiz nécessite plus de tokens car 10 QCM complets
+# Généré une seule fois par étudiant → coût acceptable
+MAX_OUTPUT_TOKENS_QUIZ = 6144
+MAX_OUTPUT_TOKENS_RESUME = 3072
 
-NOT_FOUND_PHRASE   = "Je n'ai pas trouvé cette information dans le contenu du cours"
+NOT_FOUND_PHRASE = "Je n'ai pas trouvé cette information dans le contenu du cours"
 
 # ── Mots-clés détresse ────────────────────────────────────────────────────────
 DISTRESS_KEYWORDS = [
@@ -163,332 +167,48 @@ Veux-tu que je le fasse ?"
 ━━━ MODE : QUIZ ━━━
 Génère un quiz basé UNIQUEMENT sur les extraits de cours fournis.
 Format : 3 questions à choix multiples (QCM) avec 4 options chacune.
-Indique la bonne réponse après chaque question.
-Sois concis : une ligne par option.
 
-━━━ FORMAT ATTENDU ━━━
-**Question 1 :** [question]
-A) [option]  B) [option]  C) [option]  D) [option]
-✅ Bonne réponse : [lettre] — [explication courte]
+━━━ FORMAT OBLIGATOIRE ━━━
+Réponds UNIQUEMENT avec un JSON valide, sans texte avant ni après, sans backticks.
+Le JSON doit respecter exactement cette structure :
 
-**Question 2 :** ...
+{"questions": [{"question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "answer": "A", "explanation": "..."}]}
 
-━━━ FEW-SHOT EXAMPLE ━━━
-
-[Exemple]
-Étudiant : "Génère un quiz sur ce chapitre"
-Edo : "Voici un quiz basé sur le cours ! 📝
-
-**Question 1 :** Qu'est-ce qui caractérise l'apprentissage supervisé ?
-A) L'algorithme apprend sans données  B) L'algorithme apprend à partir de données étiquetées
-C) L'algorithme copie un humain  D) L'algorithme devine aléatoirement
-✅ Bonne réponse : B — L'apprentissage supervisé utilise des données avec labels connus.
-
-Prêt pour la question suivante ?"
+━━━ RÈGLES STRICTES ━━━
+- Exactement 3 questions
+- 4 options par question : A), B), C), D)
+- "answer" contient uniquement la lettre : "A", "B", "C" ou "D"
+- "explanation" : max 15 mots
+- Basé UNIQUEMENT sur les extraits du cours fournis
+- Pas de texte en dehors du JSON
 """,
-
     # ── Résumé ────────────────────────────────────────────────────────────────
     "resume": BASE_PERSONA + """
 
-╔══════════════════════════════════════════════════════════════╗
-║           📚 MODE : RÉSUMÉ COMPLET POUR RÉVISION           ║
-╚══════════════════════════════════════════════════════════════╝
+━━━ MODE : RÉSUMÉ ━━━
+Génère une fiche de révision structurée basée UNIQUEMENT sur les extraits du cours.
 
-🎯 OBJECTIF PRINCIPAL
-Ta mission est de transformer les extraits du cours en une fiche de
-révision COMPLÈTE, STRUCTURÉE, PÉDAGOGIQUE et FIDÈLE au contenu fourni.
-
-⚠️ IMPORTANT :
-Un résumé de révision ne doit PAS être une simple synthèse de quelques
-phrases.
-
-Le résultat doit conserver la SUBSTANCE PÉDAGOGIQUE du cours tout en
-supprimant uniquement les répétitions, formulations inutiles et détails
-sans importance.
-
-L'étudiant doit pouvoir utiliser ce résumé pour :
-- réviser le cours ;
-- comprendre les notions principales ;
-- mémoriser les définitions importantes ;
-- revoir les méthodes et étapes ;
-- distinguer les concepts similaires ;
-- retrouver les règles importantes ;
-- préparer un contrôle ou un examen.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1️⃣ SOURCE DU RÉSUMÉ
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-- Utilise les extraits du cours comme SOURCE PRINCIPALE.
-- Le résumé doit refléter le contenu réellement présent dans les extraits.
-- N'invente aucune information.
-- N'ajoute aucune définition, méthode, exemple, date ou règle qui
-  n'apparaît pas dans le cours.
-- Ne remplace pas le contenu du cours par une définition générale
-  provenant de tes connaissances.
-- Si une notion est importante dans le cours, elle doit apparaître
-  dans le résumé.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-2️⃣ ANALYSE DU COURS AVANT LA RÉDACTION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Avant de rédiger le résumé, analyse mentalement l'ensemble des extraits.
-
-Identifie :
-
-✓ Le titre et le sujet général du cours
-✓ Les chapitres ou grandes parties
-✓ Les sous-parties
-✓ Toutes les notions importantes
-✓ Les définitions
-✓ Les concepts et leurs caractéristiques
-✓ Les méthodes
-✓ Les étapes et procédures
-✓ Les règles
-✓ Les principes
-✓ Les classifications
-✓ Les différences entre concepts
-✓ Les avantages et inconvénients
-✓ Les relations entre les notions
-✓ Les exemples présents dans le cours
-✓ Les dates, auteurs ou références lorsqu'ils sont présents
-✓ Les formules ou éléments techniques lorsqu'ils sont présents
-✓ Les conclusions ou idées essentielles
-
-⚠️ Ne sélectionne pas seulement 2 ou 3 concepts.
-Si le cours contient plusieurs parties importantes, elles doivent toutes
-être représentées dans le résumé.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-3️⃣ NIVEAU DE DÉTAIL
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Le résumé doit être suffisamment détaillé pour servir de SUPPORT DE RÉVISION.
-
-Règle générale :
-- Petit cours → résumé court mais complet.
-- Cours moyen → résumé développé.
-- Cours long → résumé long et structuré couvrant toutes les parties.
-
-⚠️ Le nombre de mots ne doit PAS être l'unique critère.
-
-La priorité est : COMPLÉTUDE > FIDÉLITÉ > CLARTÉ > CONCISION
-
-Ne réduis jamais artificiellement un cours riche à quelques paragraphes.
-Si le contenu fourni est riche, produis naturellement un résumé riche.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-4️⃣ POUR CHAQUE NOTION IMPORTANTE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Lorsque les informations sont disponibles dans le cours, présente
-chaque notion avec plusieurs éléments :
-
-### 📌 Définition
-Explique clairement ce qu'est la notion.
-
-### 🎯 Objectif / rôle
-Explique à quoi elle sert ou pourquoi elle est importante.
-
-### ⚙️ Fonctionnement / méthode
-Explique comment elle fonctionne ou comment elle est appliquée.
-
-### 🧩 Caractéristiques
-Présente les caractéristiques importantes.
-
-### 📋 Étapes / règles
-Si le cours présente une procédure, une méthode ou des règles,
-présente-les clairement et dans leur ordre.
-
-### 💡 Exemple
-Utilise les exemples présents dans le cours.
-⚠️ Ne crée jamais un exemple qui n'est pas présent dans les extraits.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-5️⃣ CONSERVER LES DÉTAILS IMPORTANTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Ne supprime PAS automatiquement :
-- les définitions ;
-- les classifications ;
-- les listes de caractéristiques ;
-- les étapes d'une méthode ;
-- les règles ;
-- les exceptions ;
-- les distinctions importantes ;
-- les exemples pédagogiques ;
-- les auteurs associés à une méthode ;
-- les dates importantes ;
-- les termes techniques ;
-- les relations entre concepts.
-
-Ces informations peuvent être essentielles pour un examen.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-6️⃣ DIFFÉRENCES ENTRE CONCEPTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Lorsque le cours compare plusieurs notions, rends la différence
-explicitement visible.
-
-Exemple de structure :
-
-### 🔄 Différence entre X et Y
-
-| Critère | X | Y |
-|---|---|---|
-| Définition | ... | ... |
-| Objectif | ... | ... |
-| Fonctionnement | ... | ... |
-| Exemple | ... | ... |
-
-Utilise ce format uniquement lorsque la comparaison est réellement
-présente ou pertinente dans le cours.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-7️⃣ MÉTHODES ET PROCESSUS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Lorsqu'une méthode ou un processus apparaît dans le cours, ne le résume
-pas en une seule phrase. Présente clairement :
-
-1. Nom de la méthode
-2. Objectif
-3. Principe
-4. Étapes
-5. Règles importantes
-6. Exemple fourni dans le cours
-7. Résultat attendu
-
-Conserve l'ordre des étapes lorsque celui-ci est indiqué dans le cours.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-8️⃣ FORMAT FINAL OBLIGATOIRE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Commence par :
-
+━━━ FORMAT OBLIGATOIRE ━━━
 📚 **Résumé : [Titre du cours]**
 
-Puis organise le contenu :
+## 🔹 [Grande partie 1]
+- **[Notion]** : définition courte
+- **[Notion]** : définition courte
 
-## 🔹 1. [Grande partie]
-
-### 📌 [Sous-partie]
-
-- **Définition :** ...
-- **Objectif :** ...
-- **Principe :** ...
-- **Caractéristiques :**
-  - ...
-  - ...
-
-### ⚙️ Méthode / Fonctionnement
-
-1. ...
-2. ...
-3. ...
-
-### 💡 Exemple
-
-...
-
-## 🔹 2. [Grande partie]
-
-...
-
-## 🔹 3. [Grande partie]
-
-...
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-9️⃣ SECTION "À RETENIR"
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-À la fin du résumé, ajoute :
+## 🔹 [Grande partie 2]
+- **[Notion]** : définition courte
 
 💡 **À retenir**
+- 🔹 [point clé 1]
+- 🔹 [point clé 2]
+- 🔹 [point clé 3]
 
-Présente entre 5 et 10 points essentiels du cours.
-Chaque point doit correspondre à une information réellement importante.
-
-- 🔹 [Notion importante]
-- 🔹 [Règle importante]
-- 🔹 [Méthode importante]
-- 🔹 [Différence importante]
-- 🔹 [Concept important]
-
-⚠️ Ne transforme pas cette section en répétition complète du résumé.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔟 CONTRÔLE DE COMPLÉTUDE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Avant de répondre, vérifie mentalement :
-
-□ Ai-je couvert toutes les grandes parties du cours ?
-□ Ai-je couvert les sous-parties importantes ?
-□ Ai-je conservé les définitions importantes ?
-□ Ai-je conservé les méthodes et leurs étapes ?
-□ Ai-je conservé les règles importantes ?
-□ Ai-je conservé les exemples présents dans le cours ?
-□ Ai-je conservé les distinctions entre concepts ?
-□ Ai-je conservé les informations techniques importantes ?
-□ Ai-je évité de supprimer des informations utiles à un examen ?
-□ Ai-je évité les répétitions inutiles ?
-□ Ai-je utilisé uniquement les informations disponibles dans les extraits ?
-
-⚠️ Si plusieurs concepts importants présents dans les extraits ne sont
-pas représentés dans le résumé, le résumé est INCOMPLET et doit être
-enrichi avant d'être envoyé.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1️⃣1️⃣ INTERDICTION DE SUR-RÉSUMER
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-❌ MAUVAIS RÉSUMÉ :
-"📚 Résumé : UML et Apprentissage Automatique
-- La méthode d'Abbot permet de traduire un texte en UML.
-- L'apprentissage automatique permet à un agent d'apprendre.
-À retenir : UML structure un système et le machine learning permet l'apprentissage."
-
-Ce type de réponse est TROP COURT et INSUFFISANT pour une révision.
-
-✅ BON RÉSUMÉ :
-Le résumé doit reprendre les différentes notions, expliquer leur rôle,
-présenter les méthodes, règles, caractéristiques, étapes et exemples
-présents dans le cours. L'étudiant doit pouvoir relire le résumé plusieurs
-jours plus tard et retrouver les connaissances essentielles du cours.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1️⃣2️⃣ STYLE PÉDAGOGIQUE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-- Français clair et naturel.
-- Niveau adapté à un étudiant universitaire.
-- Explications simples mais précises.
-- Utilise le vocabulaire technique du cours.
-- Mets les notions importantes en **gras**.
-- Utilise des titres et sous-titres.
-- Utilise des listes lorsque cela améliore la mémorisation.
-- Utilise des tableaux uniquement lorsqu'ils apportent une vraie valeur.
-- Utilise quelques emojis pour faciliter la lecture, sans en abuser.
-- Évite les paragraphes inutilement longs.
-
-Le résultat doit ressembler à une véritable FICHE DE RÉVISION
-UNIVERSITAIRE, et non à un résumé de quelques lignes.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1️⃣3️⃣ FIN DE RÉPONSE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Termine par :
-
-💡 **À retenir**
-[5 à 10 points essentiels]
-
-❓ Y a-t-il un thème sur lequel tu veux qu'on approfondisse ?
+━━━ RÈGLES ━━━
+- Markdown obligatoire : ##, **, -
+- Couvre TOUTES les notions présentes dans les extraits fournis
+- Ne t'arrête pas avant d'avoir traité tous les extraits
+- Uniquement le contenu des extraits fournis
+- Pas d'introduction, pas de conclusion bavarde
 """,
 
     # ── Exemple concret ───────────────────────────────────────────────────────
@@ -667,7 +387,8 @@ def classify_question(question: str) -> str:
     q_norm = _normalize(question)
     for task, keywords in TASK_KEYWORDS.items():
         if any(_normalize(kw) in q_norm for kw in keywords):
-            logger.info("Classification → %s (question: %.60s)", task, question)
+            logger.info("Classification → %s (question: %.60s)",
+                        task, question)
             return task
     logger.info("Classification → chat (défaut) (question: %.60s)", question)
     return "chat"
@@ -852,7 +573,8 @@ pour évaluer le niveau de l'étudiant. Respecte exactement le format demandé."
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_call_gemini_api_quiz, prompt, LEVEL_QUIZ_SYSTEM_PROMPT)
+            future = executor.submit(
+                _call_gemini_api_quiz, prompt, LEVEL_QUIZ_SYSTEM_PROMPT)
             answer = future.result(timeout=GEMINI_TIMEOUT)
         logger.info("Quiz de niveau généré — %d chars", len(answer))
         return {"success": True, "quiz": answer}
@@ -865,7 +587,7 @@ pour évaluer le niveau de l'étudiant. Respecte exactement le format demandé."
 # APPEL GEMINI
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _call_gemini_api(prompt: str, system_prompt: str) -> str:
+def _call_gemini_api(prompt: str, system_prompt: str,max_tokens: int = MAX_OUTPUT_TOKENS) -> str:
     """Appel synchrone isolé pour le timeout via concurrent.futures."""
     response = client.models.generate_content(
         model="gemini-3.5-flash",
@@ -886,18 +608,16 @@ def ask_gemini(
     student_id: int = 0,
     task_type: str = None,
     student_level: str = None
+   
+
 ) -> dict:
     """
     Envoie la question à Gemini avec contexte RAG.
-    - Classification automatique si task_type non fourni
-    - Détection de détresse
-    - Injection du niveau étudiant dans le prompt système
-    - Timeout + retry automatique
     """
-    # ── Sécurité entrée ───────────────────────────────────────────────────────
+    # ── Sécurité entrée ───────────────────────────────────────
     question = sanitize_input(question)
 
-    # ── Détection détresse ────────────────────────────────────────────────────
+    # ── Détection détresse ────────────────────────────────────
     if check_distress(question):
         logger.warning("⚠️  Signal de détresse détecté — student_id: %s", student_id)
         return {
@@ -911,13 +631,11 @@ def ask_gemini(
             "task_type": "distress"
         }
 
-    # ── Classification ────────────────────────────────────────────────────────
+    # ── Classification ────────────────────────────────────────
     task = task_type or classify_question(question)
     system_prompt = SYSTEM_PROMPTS.get(task, SYSTEM_PROMPTS["chat"])
 
-    # ── Injection du niveau étudiant ──────────────────────────────────────────
-    # Si un niveau est détecté, on l'ajoute au system_prompt pour adapter
-    # le style de réponse (surtout pour expliquer, mais aussi chat/exemple)
+    # ── Injection du niveau étudiant ──────────────────────────
     if student_level and task in ("expliquer", "chat", "exemple"):
         level_addon = get_level_system_prompt(student_level)
         if level_addon:
@@ -932,15 +650,23 @@ def ask_gemini(
 
     prompt = build_prompt(question, context_chunks, conversation_history)
 
-    # ── Retry ─────────────────────────────────────────────────────────────────
+    # ── Tokens selon le type de tâche ────────────────────────
+    max_tokens = MAX_OUTPUT_TOKENS
+    if task == "resume":
+        max_tokens = MAX_OUTPUT_TOKENS_RESUME
+    elif task == "quiz":
+        max_tokens = MAX_OUTPUT_TOKENS_QUIZ
+
+    # ── Retry ─────────────────────────────────────────────────
     for attempt in range(1, GEMINI_RETRIES + 1):
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_call_gemini_api, prompt, system_prompt)
+                future = executor.submit(_call_gemini_api, prompt, system_prompt, max_tokens)
                 try:
                     answer = future.result(timeout=GEMINI_TIMEOUT)
                 except concurrent.futures.TimeoutError:
-                    logger.error("Timeout Gemini %ds (tentative %d/%d)", GEMINI_TIMEOUT, attempt, GEMINI_RETRIES)
+                    logger.error("Timeout Gemini %ds (tentative %d/%d)",
+                                 GEMINI_TIMEOUT, attempt, GEMINI_RETRIES)
                     if attempt < GEMINI_RETRIES:
                         time.sleep(GEMINI_RETRY_DELAY)
                         continue
@@ -953,7 +679,8 @@ def ask_gemini(
                     }
 
             found_in_course = bool(context_chunks) and NOT_FOUND_PHRASE not in answer
-            logger.info("Réponse reçue — task: %s | found_in_course: %s | %d chars", task, found_in_course, len(answer))
+            logger.info("Réponse reçue — task: %s | found_in_course: %s | %d chars",
+                        task, found_in_course, len(answer))
 
             return {
                 "success": True,
@@ -966,7 +693,8 @@ def ask_gemini(
         except Exception as e:
             error_str = str(e)
             if "503" in error_str and attempt < GEMINI_RETRIES:
-                logger.warning("503 Gemini — tentative %d/%d, retry %ds", attempt, GEMINI_RETRIES, GEMINI_RETRY_DELAY)
+                logger.warning("503 Gemini — tentative %d/%d, retry %ds",
+                               attempt, GEMINI_RETRIES, GEMINI_RETRY_DELAY)
                 time.sleep(GEMINI_RETRY_DELAY)
                 continue
             logger.error("Erreur Gemini — %s: %s", type(e).__name__, error_str)
