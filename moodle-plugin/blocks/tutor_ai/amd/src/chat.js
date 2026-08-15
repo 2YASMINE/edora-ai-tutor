@@ -1,7 +1,8 @@
 /**
  * Edora AI Tutor — Module chat
  * @author Islem Troudi — Phase 7 (historique + panneau latéral)
- * @author Yasmine — Floating button + MariaDB schema
+ * @author Yasmine — Floating button + MariaDB schema + Phase 8 (level detection, cache, markdown)
+ * @fix Islem — studentId depuis dataset, renderMarkdown intégré
  */
 
 (function () {
@@ -14,6 +15,9 @@
 
     var rootEl     = document.getElementById('edo-chat-root');
     var avatarUrl  = rootEl ? rootEl.dataset.avatarUrl : '';
+
+    // ── FIX : récupérer le vrai studentId depuis le dataset PHP ──
+    var studentId  = rootEl ? (rootEl.dataset.studentId || '0') : '0';
 
     var AVATAR_IMG    = '<img src="' + avatarUrl + '" style="width:100%;height:100%;object-fit:cover;" alt="Edo">';
     var AVATAR_IMG_SM = '<img src="' + avatarUrl + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover;" alt="Edo">';
@@ -53,6 +57,30 @@
                  + ' ' + d.getHours().toString().padStart(2,'0')
                  + ':' + d.getMinutes().toString().padStart(2,'0');
         } catch(e) { return str; }
+    }
+
+    // ── FIX : renderMarkdown — rendu visuel du Markdown ───────
+    function renderMarkdown(text) {
+        if (!text) return '';
+        var html = text
+            // Titres ## et ###
+            .replace(/^### (.+)$/gm, '<h4 style="margin:10px 0 4px;font-size:13px;color:#005f73;font-weight:700;">$1</h4>')
+            .replace(/^## (.+)$/gm,  '<h3 style="margin:12px 0 5px;font-size:14px;color:#005f73;font-weight:700;">$1</h3>')
+            .replace(/^# (.+)$/gm,   '<h2 style="margin:14px 0 6px;font-size:15px;color:#005f73;font-weight:700;">$1</h2>')
+            // Gras **texte**
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            // Italique *texte*
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            // Listes - item
+            .replace(/^- (.+)$/gm, '<li style="margin:3px 0;padding-left:4px;">$1</li>')
+            // Listes numérotées
+            .replace(/^\d+\. (.+)$/gm, '<li style="margin:3px 0;padding-left:4px;">$1</li>')
+            // Entourer les <li> consécutifs
+            .replace(/(<li[^>]*>.*<\/li>\n?)+/g, '<ul style="margin:6px 0 6px 16px;padding:0;list-style:disc;">$&</ul>')
+            // Sauts de ligne
+            .replace(/\n\n/g, '</p><p style="margin:6px 0;">')
+            .replace(/\n/g, '<br>');
+        return '<p style="margin:0;">' + html + '</p>';
     }
 
     // ── Suggestions dynamiques ─────────────────────────────────
@@ -97,7 +125,8 @@
             row.appendChild(av);
             var bubble = document.createElement('div');
             bubble.classList.add('edo-bubble', 'edo-bubble--bot');
-            bubble.innerHTML = text.replace(/\n/g, '<br>') + '<div class="edo-timestamp">' + getTime() + '</div>';
+            // FIX : utiliser renderMarkdown au lieu de .replace(\n, <br>)
+            bubble.innerHTML = renderMarkdown(text) + '<div class="edo-timestamp">' + getTime() + '</div>';
             row.appendChild(bubble);
             messages.appendChild(row);
             messages.scrollTop = messages.scrollHeight;
@@ -276,7 +305,8 @@
             messages.appendChild(row); hp.remove();
         });
         try {
-            var resp = await fetch(apiUrl + '/conversations?user_id=0&course_id=' + courseId);
+            // FIX : utiliser le vrai studentId
+            var resp = await fetch(apiUrl + '/conversations?user_id=' + studentId + '&course_id=' + courseId);
             var data = await resp.json();
             var list = hp.querySelector('#edo-history-list');
             if (!data.conversations || data.conversations.length === 0) { list.innerHTML = '<div style="text-align:center;color:#9ca3af;font-size:13px;padding:20px 0;">Aucune conversation pour l\'instant.</div>'; return; }
@@ -304,29 +334,18 @@
     }
 
     // ── Extraits de cours (sources RAG) ───────────────────────
-    // Affiche les chunks utilisés dans un cadre collapsible.
-    // L'étudiant voit d'où vient l'information d'Edo.
     function renderSources(sources, messages) {
         if (!sources || sources.length === 0) return;
-
         var wrapper = document.createElement('div');
         wrapper.style.cssText = 'margin-left:44px;margin-top:4px;margin-bottom:6px;max-width:88%;';
-
         var isOpen = false;
-
-        // Bouton toggle
         var toggle = document.createElement('button');
         toggle.style.cssText = 'display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;font-size:11.5px;color:#6b7280;padding:2px 0;margin-bottom:6px;transition:color 0.15s;';
-        toggle.innerHTML = SVG.book
-            + '<span class="edo-src-label">' + sources.length + ' extrait(s) du cours utilisé(s)</span>'
-            + '<span class="edo-src-chevron" style="display:inline-flex;transition:transform 0.2s;">' + SVG.chevron + '</span>';
+        toggle.innerHTML = SVG.book + '<span class="edo-src-label">' + sources.length + ' extrait(s) du cours utilisé(s)</span><span class="edo-src-chevron" style="display:inline-flex;transition:transform 0.2s;">' + SVG.chevron + '</span>';
         toggle.addEventListener('mouseenter', function() { toggle.style.color = '#0a9396'; });
         toggle.addEventListener('mouseleave', function() { toggle.style.color = '#6b7280'; });
-
-        // Conteneur des extraits (caché par défaut)
         var srcContainer = document.createElement('div');
         srcContainer.style.cssText = 'display:none;flex-direction:column;gap:8px;';
-
         toggle.addEventListener('click', function() {
             isOpen = !isOpen;
             srcContainer.style.display = isOpen ? 'flex' : 'none';
@@ -336,31 +355,21 @@
             if (label) label.textContent = isOpen ? 'Masquer les extraits' : sources.length + ' extrait(s) du cours utilisé(s)';
             messages.scrollTop = messages.scrollHeight;
         });
-
-        // Générer chaque carte extrait
         sources.forEach(function(src, idx) {
             var card = document.createElement('div');
             card.style.cssText = 'background:#f0f9f9;border:1px solid #94d2bd;border-left:3px solid #0a9396;border-radius:8px;padding:10px 12px;font-size:12px;color:#374151;line-height:1.6;';
-
-            // Nettoyer le nom du fichier source
-            var srcName = src.resource_name
-                ? decodeURIComponent(src.resource_name.replace(/\+/g, ' ').replace(/%20/g, ' '))
-                : 'Cours';
+            var srcName = src.resource_name ? decodeURIComponent(src.resource_name.replace(/\+/g, ' ').replace(/%20/g, ' ')) : 'Cours';
             srcName = srcName.replace(/\.(pdf|docx?|pptx?|txt)$/i, '');
-
             var srcHeader = document.createElement('div');
             srcHeader.style.cssText = 'display:flex;align-items:center;gap:5px;margin-bottom:7px;font-size:11px;font-weight:600;color:#0a9396;';
             srcHeader.innerHTML = SVG.file + '<span>Extrait ' + (idx + 1) + ' — ' + srcName + '</span>';
-
             var srcText = document.createElement('div');
             srcText.style.cssText = 'white-space:pre-wrap;font-family:inherit;color:#4b5563;font-size:12px;line-height:1.65;border-top:1px solid #b2d8d8;padding-top:7px;margin-top:2px;';
             srcText.textContent = src.chunk_excerpt ? src.chunk_excerpt.trim() : '';
-
             card.appendChild(srcHeader);
             card.appendChild(srcText);
             srcContainer.appendChild(card);
         });
-
         wrapper.appendChild(toggle);
         wrapper.appendChild(srcContainer);
         messages.appendChild(wrapper);
@@ -475,18 +484,11 @@
         return true;
     }
 
-    // ── Send question ──────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════
-// SYSTÈME DE DÉTECTION DU NIVEAU ÉTUDIANT — à intégrer dans chat.js
-// Colle ce bloc JUSTE AVANT la fonction sendQuestion()
-// ═══════════════════════════════════════════════════════════════
-
     // ── État du niveau étudiant ────────────────────────────────
-    var studentLevel     = null;   // 'debutant' | 'intermediaire' | 'avance'
-    var levelQuizDone    = false;  // true si quiz complété
-    var levelQuizPending = false;  // true si quiz en cours d'affichage
+    var studentLevel     = null;
+    var levelQuizDone    = false;
+    var levelQuizPending = false;
 
-    // Mots-clés de small talk → pas de quiz de niveau
     var SMALL_TALK = [
         "bonjour","bonsoir","salut","hello","hi","hey","merci",
         "au revoir","bye","ciao","ok","oui","non","d'accord",
@@ -502,8 +504,8 @@
         return false;
     }
 
-    // ── Charger le niveau depuis l'API au démarrage ────────────
-    async function loadStudentLevel(apiUrl, courseId, studentId) {
+    // FIX : utiliser studentId variable (pas 0 hardcodé)
+    async function loadStudentLevel(apiUrl, courseId) {
         try {
             var resp = await fetch(
                 apiUrl + '/student-level?student_id=' + studentId + '&course_id=' + courseId
@@ -521,123 +523,67 @@
         }
     }
 
-    // ── Afficher le badge de niveau dans l'interface ───────────
     function showLevelBadge(level) {
         var existing = document.getElementById('edo-level-badge');
         if (existing) existing.remove();
-
         var labels = {
             debutant:      { text: '🌱 Débutant',       color: '#059669', bg: '#d1fae5' },
             intermediaire: { text: '📘 Intermédiaire',  color: '#0a9396', bg: '#cffafe' },
             avance:        { text: '🚀 Avancé',          color: '#7c3aed', bg: '#ede9fe' }
         };
         var info = labels[level] || { text: level, color: '#6b7280', bg: '#f3f4f6' };
-
         var badge = document.createElement('div');
         badge.id = 'edo-level-badge';
-        badge.style.cssText = [
-            'display:flex', 'align-items:center', 'gap:6px',
-            'margin:6px 44px 2px',
-            'padding:5px 10px',
-            'border-radius:20px',
-            'font-size:11.5px', 'font-weight:600',
-            'color:' + info.color,
-            'background:' + info.bg,
-            'width:fit-content'
-        ].join(';');
+        badge.style.cssText = 'display:flex;align-items:center;gap:6px;margin:6px 44px 2px;padding:5px 10px;border-radius:20px;font-size:11.5px;font-weight:600;color:' + info.color + ';background:' + info.bg + ';width:fit-content';
         badge.textContent = info.text;
-
         var messages = document.getElementById('edo-messages');
         if (messages) messages.appendChild(badge);
     }
 
-    // ── Quiz de niveau interactif ──────────────────────────────
-    // Retourne une Promise résolue avec {correct, total} quand l'étudiant termine
-    function renderLevelQuiz(quizText, apiUrl, courseId, studentId, convId) {
-        return new Promise(function(resolve) {
+    function renderLevelQuiz(quizText, apiUrl, courseId, convId, onComplete) {
         var messages = document.getElementById('edo-messages');
-        if (!messages) { resolve({correct:5, total:10}); return; }
-
-        // Message d'introduction
+        if (!messages) return;
         var introRow = document.createElement('div');
         introRow.classList.add('edo-bot-row');
-        var introAv = document.createElement('div');
-        introAv.className = 'edo-bot-avatar';
-        introAv.innerHTML = AVATAR_IMG_SM;
+        var introAv = document.createElement('div'); introAv.className = 'edo-bot-avatar'; introAv.innerHTML = AVATAR_IMG_SM;
         introRow.appendChild(introAv);
         var introBubble = document.createElement('div');
         introBubble.classList.add('edo-bubble', 'edo-bubble--bot');
         introBubble.style.cssText = 'background:linear-gradient(135deg,#e0f7fa,#f0fdf4);border:1.5px solid #0a9396;';
-        introBubble.innerHTML = [
-            '🎯 <strong>Avant de commencer, faisons connaissance !</strong><br>',
-            'Pour que je puisse adapter mes explications à ton niveau, ',
-            'réponds à ce petit quiz de <strong>10 questions</strong> sur le cours.<br>',
-            '<span style="font-size:11px;color:#6b7280;">Cela ne prend que 2 minutes — promis ! 😊</span>',
-            '<div class="edo-timestamp">' + getTime() + '</div>'
-        ].join('');
+        introBubble.innerHTML = '🎯 <strong>Avant de commencer, faisons connaissance !</strong><br>Pour que je puisse adapter mes explications à ton niveau, réponds à ce petit quiz de <strong>10 questions</strong> sur le cours.<br><span style="font-size:11px;color:#6b7280;">Cela ne prend que 2 minutes — promis ! 😊</span><div class="edo-timestamp">' + getTime() + '</div>';
         introRow.appendChild(introBubble);
         messages.appendChild(introRow);
         messages.scrollTop = messages.scrollHeight;
 
-        // Parser et afficher le quiz interactif
         var parts = quizText.split(/(?=\*\*Question\s+\d+\s*:)/i);
         var blocks = parts.filter(function(b) { return b.trim().match(/^\*\*Question/i); });
-
-        if (blocks.length === 0) {
-            resolve({correct:5, total:10}); // fallback niveau intermédiaire si parsing échoue
-            return;
-        }
+        if (blocks.length === 0) { onComplete(5, 10); return; }
 
         var quizWrapper = document.createElement('div');
         quizWrapper.style.cssText = 'margin:8px 0 8px 44px;max-width:88%;display:flex;flex-direction:column;gap:10px;';
-
         var score = { correct: 0, total: blocks.length, answered: 0 };
 
         blocks.forEach(function(block, idx) {
             var lines = block.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
             var qLine = lines[0] || '';
             var qText = qLine.replace(/^\*\*Question\s*\d+\s*:\*?\*?\s*/i,'').replace(/\*\*/g,'').trim();
-
             var options = []; var seen = {}; var correctLetter = ''; var explanation = '';
-
             lines.forEach(function(line) {
-                // ── Bonne réponse ──────────────────────────────────────────────
+                var multi = line.match(/([A-D])\)\s+(.+?)(?=\s{2,}[A-D]\)|$)/g);
+                if (multi) { multi.forEach(function(m) { var p = m.match(/^([A-D])\)\s+(.+)/); if (p && !seen[p[1]]) { seen[p[1]]=true; options.push({letter:p[1],text:p[2].trim()}); } }); }
+                else { var s = line.match(/^([A-D])\)\s+(.+)/); if (s && !seen[s[1]]) { seen[s[1]]=true; options.push({letter:s[1],text:s[2].trim()}); } }
                 var ans = line.match(/✅\s*Bonne\s*r[ée]ponse\s*:\s*([A-D])\s*[—\-–]\s*(.+)/i);
-                if (ans) { correctLetter = ans[1]; explanation = ans[2].trim(); return; }
-
-                // ── Options sur une seule ligne : "A) ... B) ... C) ... D) ..."
-                if (/^[A-D]\)/.test(line) && line.match(/[B-D]\)/)) {
-                    // Découper sur les séparateurs de lettre
-                    var parts = line.split(/(?=[B-D]\))/);
-                    // Ajouter aussi le premier segment qui commence par A)
-                    parts.forEach(function(part) {
-                        var m = part.trim().match(/^([A-D])\)\s+(.+)/);
-                        if (m && !seen[m[1]]) {
-                            seen[m[1]] = true;
-                            options.push({ letter: m[1], text: m[2].trim() });
-                        }
-                    });
-                    return;
-                }
-
-                // ── Option sur sa propre ligne : "A) ..." ─────────────────────
-                var s = line.match(/^([A-D])\)\s+(.+)/);
-                if (s && !seen[s[1]]) { seen[s[1]] = true; options.push({ letter: s[1], text: s[2].trim() }); }
+                if (ans) { correctLetter=ans[1]; explanation=ans[2].trim(); }
             });
-
             var qCard = document.createElement('div');
             qCard.style.cssText = 'background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px 14px;';
-
-            // Numéro + texte question
             var qHeader = document.createElement('div');
             qHeader.style.cssText = 'font-size:12.5px;font-weight:600;color:#1e293b;margin-bottom:8px;';
             qHeader.innerHTML = '<span style="color:#0a9396;">Q' + (idx+1) + '.</span> ' + qText;
             qCard.appendChild(qHeader);
-
             var optDiv = document.createElement('div');
             optDiv.style.cssText = 'display:flex;flex-direction:column;gap:5px;';
             var answered = false;
-
             options.forEach(function(opt) {
                 var btn = document.createElement('button');
                 btn.style.cssText = 'text-align:left;padding:7px 11px;border-radius:7px;border:1.5px solid #e2e8f0;background:#fff;font-size:12px;color:#374151;cursor:pointer;transition:all 0.15s;width:100%;';
@@ -649,7 +595,6 @@
                     answered = true; score.answered++;
                     var isCorrect = (opt.letter === correctLetter);
                     if (isCorrect) score.correct++;
-
                     optDiv.querySelectorAll('button').forEach(function(b) {
                         b.style.cursor = 'default';
                         var lm = b.innerHTML.match(/<strong>([A-D])\)<\/strong>/);
@@ -658,19 +603,14 @@
                         else if (b === btn && !isCorrect) { b.style.background='#fef2f2'; b.style.borderColor='#ef4444'; b.style.color='#dc2626'; }
                         else { b.style.opacity='0.4'; }
                     });
-
-                    // Petite explication sous la question
                     var exp = document.createElement('div');
-                    exp.style.cssText = 'margin-top:6px;padding:6px 10px;border-radius:6px;font-size:11.5px;' +
-                        (isCorrect ? 'background:#f0fdf4;color:#15803d;border:1px solid #86efac;' : 'background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;');
+                    exp.style.cssText = 'margin-top:6px;padding:6px 10px;border-radius:6px;font-size:11.5px;' + (isCorrect ? 'background:#f0fdf4;color:#15803d;border:1px solid #86efac;' : 'background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;');
                     exp.innerHTML = isCorrect ? '✅ ' + explanation : '❌ Bonne réponse : <strong>' + correctLetter + '</strong> — ' + explanation;
                     qCard.appendChild(exp);
                     messages.scrollTop = messages.scrollHeight;
-
-                    // Toutes les questions répondues → afficher résultat
                     if (score.answered === score.total) {
                         setTimeout(function() {
-                            showLevelResult(score.correct, score.total, apiUrl, courseId, studentId, convId, resolve);
+                            showLevelResult(score.correct, score.total, apiUrl, courseId, convId, onComplete);
                         }, 800);
                     }
                 });
@@ -679,143 +619,74 @@
             qCard.appendChild(optDiv);
             quizWrapper.appendChild(qCard);
         });
-
         messages.appendChild(quizWrapper);
         messages.scrollTop = messages.scrollHeight;
-        }); // fin Promise
     }
 
-    // ── Afficher le résultat du quiz de niveau ─────────────────
-    async function showLevelResult(correct, total, apiUrl, courseId, studentId, convId, resolve) {
+    async function showLevelResult(correct, total, apiUrl, courseId, convId, onComplete) {
         var messages = document.getElementById('edo-messages');
         var pct = Math.round((correct / total) * 100);
-
         var levelInfo = {
             debutant:      { label: '🌱 Débutant',      color: '#059669', bg: 'linear-gradient(135deg,#d1fae5,#a7f3d0)', msg: 'Pas d\'inquiétude, on va construire tes bases ensemble, étape par étape !' },
             intermediaire: { label: '📘 Intermédiaire', color: '#0a9396', bg: 'linear-gradient(135deg,#cffafe,#a5f3fc)', msg: 'Tu as de bonnes bases ! On va approfondir ensemble.' },
             avance:        { label: '🚀 Avancé',         color: '#7c3aed', bg: 'linear-gradient(135deg,#ede9fe,#ddd6fe)', msg: 'Excellent ! Tes explications seront adaptées à ton niveau d\'expertise.' }
         };
-
-        // Calculer le niveau
         var level = correct <= 4 ? 'debutant' : correct <= 7 ? 'intermediaire' : 'avance';
         var info = levelInfo[level];
-
-        // Sauvegarder via l'API
         try {
+            // FIX : utiliser studentId variable
             await fetch(apiUrl + '/level-save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    course_id:       courseId,
-                    student_id:      studentId,
-                    conversation_id: convId,
-                    score:           correct,
-                    total:           total
-                })
+                body: JSON.stringify({ course_id: courseId, student_id: studentId, conversation_id: convId, score: correct, total: total })
             });
-        } catch(e) {
-            console.warn('[Edora] Erreur sauvegarde niveau :', e);
-        }
-
+        } catch(e) { console.warn('[Edora] Erreur sauvegarde niveau :', e); }
         studentLevel  = level;
         levelQuizDone = true;
-
-        // Carte résultat
         var resultRow = document.createElement('div');
         resultRow.classList.add('edo-bot-row');
-        var resAv = document.createElement('div');
-        resAv.className = 'edo-bot-avatar';
-        resAv.innerHTML = AVATAR_IMG_SM;
+        var resAv = document.createElement('div'); resAv.className = 'edo-bot-avatar'; resAv.innerHTML = AVATAR_IMG_SM;
         resultRow.appendChild(resAv);
-
         var resCard = document.createElement('div');
-        resCard.style.cssText = [
-            'background:' + info.bg,
-            'border:2px solid ' + info.color,
-            'border-radius:14px',
-            'padding:16px 18px',
-            'max-width:85%',
-            'display:flex', 'flex-direction:column', 'gap:8px'
-        ].join(';');
-        resCard.innerHTML = [
-            '<div style="font-size:15px;font-weight:700;color:' + info.color + ';">',
-            info.label + ' — ' + correct + '/' + total + ' (' + pct + '%)',
-            '</div>',
-            '<div style="font-size:12.5px;color:#374151;line-height:1.5;">' + info.msg + '</div>',
-            '<div style="font-size:11.5px;color:#6b7280;margin-top:4px;">',
-            'Désormais, toutes mes explications seront adaptées à ton niveau. ',
-            'Tu peux maintenant poser ta question ! 😊',
-            '</div>',
-            '<div class="edo-timestamp">' + getTime() + '</div>'
-        ].join('');
-
+        resCard.style.cssText = 'background:' + info.bg + ';border:2px solid ' + info.color + ';border-radius:14px;padding:16px 18px;max-width:85%;display:flex;flex-direction:column;gap:8px';
+        resCard.innerHTML = '<div style="font-size:15px;font-weight:700;color:' + info.color + ';">' + info.label + ' — ' + correct + '/' + total + ' (' + pct + '%)</div><div style="font-size:12.5px;color:#374151;line-height:1.5;">' + info.msg + '</div><div style="font-size:11.5px;color:#6b7280;margin-top:4px;">Désormais, toutes mes explications seront adaptées à ton niveau. Tu peux maintenant poser ta question ! 😊</div><div class="edo-timestamp">' + getTime() + '</div>';
         resultRow.appendChild(resCard);
         messages.appendChild(resultRow);
         messages.scrollTop = messages.scrollHeight;
-
-        // Afficher badge niveau dans le chat
         showLevelBadge(level);
-
-        // Résoudre la Promise → débloque sendQuestion
         levelQuizPending = false;
-        resolve({correct: correct, total: total});
+        onComplete(correct, total);
     }
 
-    // ── Intercepter la 1ère question pédagogique ───────────────
-    // Retourne une Promise résolue quand on peut procéder à l'envoi.
-    // Bloque réellement jusqu'à la fin du quiz si nécessaire.
-    async function checkAndTriggerLevelQuiz(question, apiUrl, courseId, studentId, convId) {
-        // Si quiz déjà fait ou question triviale → procéder immédiatement
-        if (levelQuizDone || isSmallTalk(question)) {
-            return;
-        }
-        // Éviter double déclenchement si quiz déjà en cours
-        if (levelQuizPending) {
-            return;
-        }
-
+    async function checkAndTriggerLevelQuiz(question, apiUrl, courseId, convId, onProceed) {
+        if (levelQuizDone || levelQuizPending || isSmallTalk(question)) { onProceed(); return; }
         levelQuizPending = true;
-
         try {
             var resp = await fetch(apiUrl + '/level-quiz', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    course_id:       courseId,
-                    student_id:      studentId,
-                    conversation_id: convId
-                })
+                // FIX : utiliser studentId variable
+                body: JSON.stringify({ course_id: courseId, student_id: studentId, conversation_id: convId })
             });
-
-            if (!resp.ok) {
-                console.warn('[Edora] /level-quiz HTTP', resp.status, '— quiz ignoré');
-                levelQuizPending = false;
-                return;
-            }
+            if (!resp.ok) { levelQuizPending = false; onProceed(); return; }
             var data = await resp.json();
-
-            // Quiz déjà fait côté serveur → continuer directement
             if (data.already_done) {
-                studentLevel     = data.level;
-                levelQuizDone    = true;
+                studentLevel  = data.level;
+                levelQuizDone = true;
                 levelQuizPending = false;
                 if (studentLevel) showLevelBadge(studentLevel);
+                onProceed();
                 return;
             }
-
-            // ── ATTENDRE que l'étudiant termine le quiz ──────────
-            // renderLevelQuiz retourne maintenant une Promise
-            await renderLevelQuiz(data.quiz, apiUrl, courseId, studentId, convId);
-            // À ce stade levelQuizDone=true et studentLevel sont déjà mis à jour
-            // par showLevelResult → on peut continuer
-
+            renderLevelQuiz(data.quiz, apiUrl, courseId, convId, function(correct, total) { onProceed(); });
         } catch(e) {
             console.warn('[Edora] Erreur quiz niveau :', e);
             levelQuizPending = false;
+            onProceed();
         }
     }
 
-    // ── Send question (avec détection de niveau) ───────────────
+    // ── Send question ──────────────────────────────────────────
     async function sendQuestion(question, apiUrl, courseId) {
         var sendBtn = document.getElementById('edo-send');
         var input   = document.getElementById('edo-input');
@@ -825,59 +696,54 @@
         appendMessage(question, 'user');
         conversationHistory.push({ role: 'user', content: question });
 
-        // ── Étape 1 : quiz de niveau si nécessaire (bloque jusqu'à fin) ──
-        // Pendant le quiz, les boutons sont réactivés pour que l'étudiant puisse cliquer
-        sendBtn.disabled = false; input.disabled = false;
-        await checkAndTriggerLevelQuiz(question, apiUrl, courseId, 0, conversationId);
-        // ← on arrive ici seulement après la fin du quiz (ou immédiatement si déjà fait)
-
-        // ── Étape 2 : envoyer la question à Gemini ────────────────
-        sendBtn.disabled = true; input.disabled = true;
-        var loadingRow = appendMessage('', 'bot', true);
-        try {
-            var response = await fetch(apiUrl + '/ask', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    question:             question,
-                    course_id:            courseId,
-                    student_id:           0,
-                    conversation_id:      conversationId,
-                    conversation_history: conversationHistory.slice(-6)
-                })
-            });
-            loadingRow.remove();
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            var data = await response.json();
-            if (data.conversation_id) {
-                conversationId = data.conversation_id;
-                localStorage.setItem('edo_conv_' + courseId, conversationId);
+        await checkAndTriggerLevelQuiz(question, apiUrl, courseId, conversationId, async function() {
+            var loadingRow = appendMessage('', 'bot', true);
+            try {
+                var response = await fetch(apiUrl + '/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    // FIX : utiliser studentId variable (plus 0 hardcodé)
+                    body: JSON.stringify({
+                        question:             question,
+                        course_id:            courseId,
+                        student_id:           studentId,
+                        conversation_id:      conversationId,
+                        conversation_history: conversationHistory.slice(-6)
+                    })
+                });
+                loadingRow.remove();
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                var data = await response.json();
+                if (data.conversation_id) {
+                    conversationId = data.conversation_id;
+                    localStorage.setItem('edo_conv_' + courseId, conversationId);
+                }
+                var msgEl = document.getElementById('edo-messages');
+                var isQuiz = renderInteractiveQuiz(data.answer, msgEl);
+                if (!isQuiz) appendMessage(data.answer, 'bot');
+                conversationHistory.push({ role: 'assistant', content: data.answer });
+                if (data.sources && data.sources.length > 0 && data.found_in_course) {
+                    renderSources(data.sources, msgEl);
+                }
+                if (data.follow_up_questions && data.follow_up_questions.length > 0) {
+                    showSuggestions(data.follow_up_questions, apiUrl, courseId);
+                }
+            } catch (error) {
+                if (document.querySelector('.edo-bubble--loading')) {
+                    document.querySelector('.edo-bubble--loading').closest('.edo-bot-row').remove();
+                }
+                appendMessage('⚠️ Je n\'arrive pas à joindre le serveur. Vérifie ta connexion et réessaie.', 'bot');
+                console.error('[Edora Chat] Erreur fetch:', error);
+            } finally {
+                sendBtn.disabled = false; input.disabled = false; input.focus();
             }
+        });
 
-            // Rendu : quiz interactif ou message normal
-            var msgEl = document.getElementById('edo-messages');
-            var isQuiz = renderInteractiveQuiz(data.answer, msgEl);
-            if (!isQuiz) appendMessage(data.answer, 'bot');
-
-            conversationHistory.push({ role: 'assistant', content: data.answer });
-
-            if (data.sources && data.sources.length > 0 && data.found_in_course) {
-                renderSources(data.sources, msgEl);
-            }
-            if (data.follow_up_questions && data.follow_up_questions.length > 0) {
-                showSuggestions(data.follow_up_questions, apiUrl, courseId);
-            }
-
-        } catch (error) {
-            if (document.querySelector('.edo-bubble--loading')) {
-                document.querySelector('.edo-bubble--loading').closest('.edo-bot-row').remove();
-            }
-            appendMessage('⚠️ Je n\'arrive pas à joindre le serveur. Vérifie ta connexion et réessaie.', 'bot');
-            console.error('[Edora Chat] Erreur fetch:', error);
-        } finally {
-            sendBtn.disabled = false; input.disabled = false; input.focus();
+        if (levelQuizPending) {
+            sendBtn.disabled = false; input.disabled = false;
         }
     }
+
     function buildFloatingUI(apiUrl, courseId) {
         var fab = document.createElement('button');
         fab.id = 'edo-fab'; fab.className = 'edo-fab';
@@ -886,12 +752,13 @@
 
         var panel = document.createElement('div');
         panel.id = 'edo-panel'; panel.className = 'edo-panel';
-        panel.innerHTML = '<div class="edo-header"><div class="edo-header__avatar">' + AVATAR_IMG + '</div><div class="edo-header__info"><span class="edo-name">Edora AI Tutor<span class="edo-name-badge">BETA</span></span><span class="edo-subtitle"><span class="edo-dot edo-dot--green"></span>Votre assistant intelligent pour vos cours</span></div><div class="edo-header__actions"><button id="edo-history-btn" class="edo-header__btn" title="Historique des conversations">' + SVG.history + '</button><button id="edo-minimize" class="edo-header__btn" title="Réduire">' + SVG.minimize + '</button><button id="edo-close" class="edo-header__btn" aria-label="Fermer">' + SVG.close + '</button></div></div><div id="edo-messages" class="edo-messages" role="log" aria-live="polite"><div class="edo-bot-row"><div class="edo-bot-avatar">' + AVATAR_IMG_SM + '</div><div class="edo-bubble edo-bubble--bot">Bonjour ! Je suis Edo, votre tuteur IA 👋<br>Posez-moi une question sur le contenu de ce cours.<div class="edo-timestamp">' + getTime() + '</div></div></div></div><div class="edo-shortcuts"><button class="edo-shortcut" data-question="Explique-moi ce chapitre">' + SVG.book + ' Expliquer</button><button class="edo-shortcut" data-question="Génère un quiz sur ce chapitre">' + SVG.quiz + ' Quiz</button><button class="edo-shortcut" data-question="Donne-moi un exemple concret">' + SVG.bulb + ' Exemple</button><button class="edo-shortcut" data-question="Résume cette leçon">' + SVG.list + ' Résumer</button></div><div class="edo-input-row"><button class="edo-input-icon" id="edo-attach" title="Joindre fichier">' + SVG.attach + '</button><input type="file" id="edo-file-input" style="display:none;" accept=".pdf,.doc,.docx,.txt,.pptx"><input type="text" id="edo-input" class="edo-input" placeholder="Posez votre question sur le contenu du cours..." aria-label="Question pour Edo" maxlength="500"/><button class="edo-input-icon" id="edo-vocal" title="Message vocal">' + SVG.mic + '</button><button id="edo-send" class="edo-send-btn" aria-label="Envoyer">' + SVG.send + '</button></div><div class="edo-footer"><span class="edo-footer-icon">' + SVG.shield + '</span><span class="edo-footer-text">Réponses générées à partir du contenu de vos cours. Vérifiez toujours les informations importantes.</span></div>';
+        panel.innerHTML = '<div class="edo-header"><div class="edo-header__avatar">' + AVATAR_IMG + '</div><div class="edo-header__info"><span class="edo-name">Edora AI Tutor<span class="edo-name-badge">BETA</span></span><span class="edo-subtitle"><span class="edo-dot edo-dot--green"></span>Votre assistant intelligent pour vos cours</span></div><div class="edo-header__actions"><button id="edo-history-btn" class="edo-header__btn" title="Historique des conversations">' + SVG.history + '</button><button id="edo-minimize" class="edo-header__btn" title="Réduire">' + SVG.minimize + '</button><button id="edo-close" class="edo-header__btn" aria-label="Fermer">' + SVG.close + '</button></div></div><div id="edo-messages" class="edo-messages" role="log" aria-live="polite"><div class="edo-bot-row"><div class="edo-bot-avatar">' + AVATAR_IMG_SM + '</div><div class="edo-bubble edo-bubble--bot">Bonjour ! Je suis Edo, votre tuteur IA 👋<br>Posez-moi une question sur le contenu de ce cours.<div class="edo-timestamp">' + getTime() + '</div></div></div></div><div class="edo-shortcuts"><button class="edo-shortcut" data-question="Explique-moi les concepts principaux de ce cours">' + SVG.book + ' Expliquer</button><button class="edo-shortcut" data-question="Génère un quiz de 3 questions QCM sur ce cours">' + SVG.quiz + ' Quiz</button><button class="edo-shortcut" data-question="Donne-moi des exemples concrets tirés de ce cours">' + SVG.bulb + ' Exemple</button><button class="edo-shortcut" data-question="Résume et synthétise le contenu complet de ce cours">' + SVG.list + ' Résumer</button></div><div class="edo-input-row"><button class="edo-input-icon" id="edo-attach" title="Joindre fichier">' + SVG.attach + '</button><input type="file" id="edo-file-input" style="display:none;" accept=".pdf,.doc,.docx,.txt,.pptx"><input type="text" id="edo-input" class="edo-input" placeholder="Posez votre question sur le contenu du cours..." aria-label="Question pour Edo" maxlength="500"/><button class="edo-input-icon" id="edo-vocal" title="Message vocal">' + SVG.mic + '</button><button id="edo-send" class="edo-send-btn" aria-label="Envoyer">' + SVG.send + '</button></div><div class="edo-footer"><span class="edo-footer-icon">' + SVG.shield + '</span><span class="edo-footer-text">Réponses générées à partir du contenu de vos cours. Vérifiez toujours les informations importantes.</span></div>';
 
         document.body.appendChild(fab);
         document.body.appendChild(panel);
         loadLastConversation(apiUrl, courseId);
-        loadStudentLevel(apiUrl, courseId, 0);
+        // FIX : plus besoin de passer studentId en paramètre, c'est une variable de module
+        loadStudentLevel(apiUrl, courseId);
 
         fab.addEventListener('click', function () {
             var isOpen = panel.classList.toggle('edo-panel--open');

@@ -11,7 +11,6 @@ from services.chunker import chunk_text
 from services.embeddings import get_embedding
 from services.chroma_service import store_chunks
 
-print("TOKEN UTILISE :", os.getenv("MOODLE_WS_TOKEN"))
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

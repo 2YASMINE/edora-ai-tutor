@@ -8,12 +8,13 @@ class block_tutor_ai extends block_base {
     }
 
     public function get_content() {
-        global $OUTPUT;  // ← déclarer $OUTPUT comme variable globale
+        global $OUTPUT, $USER;
 
         if ($this->content !== null) {
             return $this->content;
         }
 
+        // Vérifier que le microservice FastAPI est disponible
         $url = 'http://host.docker.internal:8000/health';
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -33,14 +34,16 @@ class block_tutor_ai extends block_base {
             return $this->content;
         }
 
-        $course_id = $this->page->course->id;
-        $api_url   = "http://localhost:8000";
+        $course_id  = $this->page->course->id;
+        $student_id = (int)$USER->id;
+        $api_url    = "http://localhost:8000";
 
         // URL de l'avatar hibou via Moodle
         $avatarurl = $OUTPUT->image_url('edo-avatar', 'block_tutor_ai');
 
         $this->content->text = '<div id="edo-chat-root"
             data-course-id="' . (int)$course_id . '"
+            data-student-id="' . $student_id . '"
             data-api-url="' . $api_url . '"
             data-avatar-url="' . $avatarurl . '">
         </div>';

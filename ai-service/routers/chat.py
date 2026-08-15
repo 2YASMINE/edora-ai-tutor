@@ -11,12 +11,12 @@ from services.gemini import (
 )
 from services.history_service import (
     save_message, get_history, get_user_history,
-    get_student_level, save_student_level, quiz_already_done
+    get_student_level, save_student_level, quiz_already_done,
+    compress_history
 )
 import logging
 import numpy as np
 import asyncio
-
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -37,7 +37,7 @@ def get_cached_response(question_embedding: list, course_id: int) -> dict | None
     best_response = None
     for key, entry in semantic_cache.items():
         if entry.get("course_id") != course_id:
-            continue  # ignorer les entrées d'un autre cours
+            continue
         score = cosine_similarity(question_embedding, entry["embedding"])
         if score > best_score:
             best_score = score
@@ -55,12 +55,13 @@ def save_to_cache(question: str, question_embedding: list, response: dict, cours
     semantic_cache[question.lower().strip()] = {
         "embedding":  question_embedding,
         "response":   response,
-        "course_id":  course_id        # ← ajout
+        "course_id":  course_id
     }
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SCHÉMAS POUR LES ENDPOINTS NIVEAU
 # ══════════════════════════════════════════════════════════════════════════════
-
 
 class LevelQuizRequest(BaseModel):
     course_id:       int
@@ -72,7 +73,7 @@ class LevelSaveRequest(BaseModel):
     course_id:       int
     student_id:      int = 0
     conversation_id: str
-    score:           int   # score obtenu sur 10
+    score:           int
     total:           int = 10
 
 
@@ -93,7 +94,6 @@ SMALL_TALK_KEYWORDS = [
 def is_small_talk(question: str) -> bool:
     """Détecte si la question est un message simple sans intention pédagogique."""
     q = question.lower().strip()
-    # Message très court (< 4 mots) = probablement pas pédagogique
     if len(q.split()) < 4:
         return any(kw in q for kw in SMALL_TALK_KEYWORDS)
     return False
@@ -105,11 +105,6 @@ def is_small_talk(question: str) -> bool:
 
 @router.post("/level-quiz")
 async def get_level_quiz(request: LevelQuizRequest):
-    """
-    Génère un quiz de 10 questions pour détecter le niveau de l'étudiant.
-    Appelé par le frontend lors de la 1ère vraie question pédagogique.
-    """
-    # Vérifier si le quiz a déjà été fait
     if quiz_already_done(request.student_id, request.course_id):
         level_info = get_student_level(request.student_id, request.course_id)
         return {
@@ -118,12 +113,9 @@ async def get_level_quiz(request: LevelQuizRequest):
             "score":        level_info["score"]
         }
 
-    # Récupérer des chunks du cours pour générer le quiz
-    # On utilise un embedding générique pour couvrir l'ensemble du cours
     try:
         from services.embeddings import get_embedding
-        query_embedding = get_embedding(
-            "concepts principaux du cours résumé général")
+        query_embedding = get_embedding("concepts principaux du cours résumé général")
         chunks = search_similar_chunks(
             course_id=request.course_id,
             query_embedding=query_embedding,
@@ -138,7 +130,6 @@ async def get_level_quiz(request: LevelQuizRequest):
             detail="Aucun contenu de cours disponible pour générer le quiz."
         )
 
-    # Générer le quiz via Gemini
     result = generate_level_quiz(chunks)
     if not result["success"]:
         raise HTTPException(
@@ -156,9 +147,6 @@ async def get_level_quiz(request: LevelQuizRequest):
 
 @router.post("/level-save")
 async def save_level(request: LevelSaveRequest):
-    """
-    Sauvegarde le niveau détecté après que l'étudiant a complété le quiz.
-    """
     level = classify_level(request.score, request.total)
     success = save_student_level(
         user_id=request.student_id,
@@ -191,7 +179,6 @@ async def save_level(request: LevelSaveRequest):
 
 @router.get("/student-level")
 async def get_level(student_id: int = 0, course_id: int = 0):
-    """Retourne le niveau actuel de l'étudiant pour un cours."""
     info = get_student_level(student_id, course_id)
     return info
 
@@ -202,29 +189,24 @@ async def get_level(student_id: int = 0, course_id: int = 0):
 
 @router.post("/ask", response_model=AskResponse)
 async def ask(request: AskRequest):
-    """
-    Reçoit la question de l'étudiant et retourne une réponse basée sur le cours.
-    Intègre le niveau étudiant dans le prompt si détecté.
-    """
     # Étape 1 : Validation
     if len(request.question.strip()) == 0:
-        raise HTTPException(
-            status_code=400, detail="La question ne peut pas être vide.")
+        raise HTTPException(status_code=400, detail="La question ne peut pas être vide.")
     if len(request.question) > 500:
-        raise HTTPException(
-            status_code=400, detail="Question trop longue (max 500 caractères).")
+        raise HTTPException(status_code=400, detail="Question trop longue (max 500 caractères).")
 
-    # Étape 2 : Classification de la question
+    # Étape 2 : Classification
     task_type = classify_question(request.question)
 
-    # ── SMALL TALK : court-circuit ChromaDB + Gemini léger ───────
+    # ── SMALL TALK : court-circuit ────────────────────────────────
     if is_small_talk(request.question):
-        await asyncio.sleep(0)  # cède le contrôle à l'event loop
+        await asyncio.sleep(0)
         gemini_result = ask_gemini(
             question=request.question,
-            context_chunks=[],        # pas de ChromaDB
-            conversation_history=[],  # pas d'historique
+            context_chunks=[],
+            conversation_history=[],
             student_id=request.student_id,
+            course_id=request.course_id,
             task_type="chat",
             student_level=None
         )
@@ -241,17 +223,16 @@ async def ask(request: AskRequest):
             chunks_used=0,
             is_quiz_json=False
         )
-        
-    # Étape 3 : Récupérer le niveau étudiant (si déjà détecté)
-    level_info = get_student_level(request.student_id, request.course_id)
-    student_level = level_info.get("level")    
 
+    # Étape 3 : Niveau étudiant
+    level_info = get_student_level(request.student_id, request.course_id)
+    student_level = level_info.get("level")
 
     # Étape 4 : Embedding
     question_embedding = get_embedding(request.question)
 
-    # ── CACHE : vérifier avant ChromaDB ──────────────────────────
-    cached = get_cached_response(question_embedding,request.course_id)
+    # ── CACHE ─────────────────────────────────────────────────────
+    cached = get_cached_response(question_embedding, request.course_id)
     if cached:
         conversation_id = request.conversation_id or str(uuid.uuid4())
         save_message(request.student_id, request.course_id,
@@ -267,13 +248,13 @@ async def ask(request: AskRequest):
             is_quiz_json=cached.get("is_quiz_json", False)
         )
 
-    # Étape 5 : Nombre de chunks adapté au type de tâche
+    # Étape 5 : Chunks adaptatifs
     N_CHUNKS = {
         "resume":    15,
-        "quiz":       5,
-        "expliquer":  5,
-        "exemple":    3,
-        "chat":       3,
+        "quiz":      10,
+        "expliquer": 10,
+        "exemple":   10,
+        "chat":      10,
     }
     n_results = N_CHUNKS.get(task_type, 3)
 
@@ -284,7 +265,7 @@ async def ask(request: AskRequest):
         n_results=n_results
     )
 
-    # Étape 7 : Construire chunks + sources
+    # Étape 7 : Chunks + sources
     context_chunks = []
     sources = []
     if results:
@@ -298,11 +279,13 @@ async def ask(request: AskRequest):
                 chunk_excerpt=chunk["text"]
             ))
 
-    # Étape 8 : Historique
+    # Étape 8 : Historique + compression
     history = [
         {"role": msg.role, "content": msg.content}
         for msg in (request.conversation_history or [])
     ]
+    # Compresser si > 8 échanges
+    history = compress_history(history, max_turns=8)
 
     # Étape 9 : task_type enrichi avec le niveau
     effective_task = task_type
@@ -315,6 +298,7 @@ async def ask(request: AskRequest):
         context_chunks=context_chunks,
         conversation_history=history,
         student_id=request.student_id,
+        course_id=request.course_id,
         task_type=task_type,
         student_level=student_level
     )
@@ -326,7 +310,7 @@ async def ask(request: AskRequest):
             detail=f"Erreur Gemini : {gemini_result.get('error', 'inconnue')}"
         )
 
-    # Étape 11.5 : Parser le JSON si c'est un quiz
+    # Étape 11.5 : Parser JSON quiz
     if task_type == "quiz" and gemini_result["success"]:
         import json
         try:
@@ -336,32 +320,21 @@ async def ask(request: AskRequest):
             if "questions" in quiz_data:
                 gemini_result["answer"] = json.dumps(quiz_data, ensure_ascii=False)
                 gemini_result["is_quiz_json"] = True
-                logger.info("Quiz JSON parsé avec succès — %d questions",
-                            len(quiz_data["questions"]))
+                logger.info("Quiz JSON parsé — %d questions", len(quiz_data["questions"]))
         except (json.JSONDecodeError, KeyError) as e:
-            logger.warning("Quiz JSON invalide, on garde la réponse brute : %s", str(e))
+            logger.warning("Quiz JSON invalide, réponse brute conservée : %s", str(e))
             gemini_result["is_quiz_json"] = False
 
     # Étape 12 : conversation_id
     conversation_id = request.conversation_id or str(uuid.uuid4())
 
     # Étape 13 : Sauvegarde MariaDB
-    save_message(
-        user_id=request.student_id,
-        course_id=request.course_id,
-        conversation_id=conversation_id,
-        role="user",
-        message=request.question
-    )
-    save_message(
-        user_id=request.student_id,
-        course_id=request.course_id,
-        conversation_id=conversation_id,
-        role="assistant",
-        message=gemini_result["answer"]
-    )
+    save_message(request.student_id, request.course_id,
+                 conversation_id, "user", request.question)
+    save_message(request.student_id, request.course_id,
+                 conversation_id, "assistant", gemini_result["answer"])
 
-    # ── CACHE : sauvegarder la réponse (sauf quiz)
+    # ── CACHE : sauvegarder (sauf quiz) ──────────────────────────
     if gemini_result["success"] and task_type != "quiz":
         save_to_cache(
             request.question,
@@ -372,8 +345,8 @@ async def ask(request: AskRequest):
                 "chunks_used":     gemini_result["chunks_used"],
                 "is_quiz_json":    False,
                 "sources":         [s.dict() for s in sources]
-            }
-            ,request.course_id
+            },
+            request.course_id
         )
 
     return AskResponse(
@@ -385,13 +358,13 @@ async def ask(request: AskRequest):
         is_quiz_json=gemini_result.get("is_quiz_json", False)
     )
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-# ENDPOINTS HISTORIQUE (inchangés)
+# ENDPOINTS HISTORIQUE
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/history")
 async def get_conversation_history(conversation_id: str, course_id: int = 0):
-    """Récupère les messages d'une conversation par son ID."""
     try:
         messages = get_history(conversation_id)
         return {
@@ -412,7 +385,6 @@ async def get_conversation_history(conversation_id: str, course_id: int = 0):
 
 @router.get("/conversations")
 async def get_conversations(user_id: int = 0, course_id: int = 0):
-    """Retourne la liste des conversations d'un étudiant dans un cours."""
     try:
         rows = get_user_history(user_id=user_id, course_id=course_id)
         if not rows:
@@ -444,7 +416,6 @@ async def get_conversations(user_id: int = 0, course_id: int = 0):
 
 @router.delete("/conversation/{conversation_id}")
 async def delete_conversation(conversation_id: str):
-    """Supprime tous les messages d'une conversation."""
     try:
         from services.history_service import get_connection
         conn = get_connection()

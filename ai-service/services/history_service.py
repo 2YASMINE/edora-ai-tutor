@@ -189,3 +189,41 @@ def quiz_already_done(user_id: int, course_id: int) -> bool:
     except Exception as e:
         logger.error(f"Erreur vérification quiz niveau : {str(e)}")
         return False
+
+def compress_history(history: list, max_turns: int = 8) -> list:
+    """
+    Si l'historique dépasse max_turns échanges (user+assistant),
+    résume les anciens tours et les remplace par un message system.
+    
+    history : liste de {"role": ..., "content": ...}
+    Retourne : historique compressé
+    """
+    # Un "tour" = 1 message user + 1 message assistant = 2 entrées
+    max_messages = max_turns * 2
+
+    if len(history) <= max_messages:
+        return history  # pas besoin de compresser
+
+    # Séparer : anciens tours à résumer / tours récents à garder
+    old_messages  = history[:-max_messages]
+    recent_messages = history[-max_messages:]
+
+    # Résumer les anciens tours via Gemini
+    from services.gemini import summarize_history
+    summary_text = summarize_history(old_messages)
+
+    if not summary_text:
+        # Si le résumé échoue, on garde juste les messages récents
+        logger.warning("Résumé historique échoué — on garde uniquement les %d derniers messages", max_messages)
+        return recent_messages
+
+    # Construire l'historique compressé
+    compressed = [
+        {"role": "system", "content": f"Résumé des échanges précédents : {summary_text}"}
+    ] + recent_messages
+
+    logger.info(
+        "Historique compressé — %d anciens messages → 1 résumé + %d récents",
+        len(old_messages), len(recent_messages)
+    )
+    return compressed
