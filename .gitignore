@@ -22,4 +22,7 @@ Thumbs.db
 ai-service/chroma_db/
 
 # Repo officiel Edora
-edoralms-moodle-block_ai_tutor_03/
+edoralms-moodle-block_ai_tutor_03/chat_level_detection.js 
+config.php 
+debug 
+debugdisplay 
