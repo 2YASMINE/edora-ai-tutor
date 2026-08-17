@@ -87,7 +87,7 @@ SMALL_TALK_KEYWORDS = [
     "comment vas", "ça va", "comment tu vas", "quoi de neuf",
     "ok", "oui", "non", "d'accord", "super", "cool", "bien",
     "aide", "help", "qui es-tu", "qui es tu", "présente-toi",
-    "c'est quoi edora", "tu peux", "tu es"
+    "c'est quoi edora", "tu peux", "tu es","cc","Bnjr","Bnsr",
 ]
 
 

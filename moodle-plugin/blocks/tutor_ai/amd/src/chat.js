@@ -16,10 +16,9 @@
     var rootEl     = document.getElementById('edo-chat-root');
     var avatarUrl  = rootEl ? rootEl.dataset.avatarUrl : '';
 
-    // ── FIX : récupérer le vrai studentId depuis le dataset PHP ──
     var studentId  = rootEl ? (rootEl.dataset.studentId || '0') : '0';
 
-    var AVATAR_IMG    = '<img src="' + avatarUrl + '" style="width:100%;height:100%;object-fit:cover;" alt="Edo">';
+var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;object-fit:cover;margin:-25%;" alt="Edo">';
     var AVATAR_IMG_SM = '<img src="' + avatarUrl + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover;" alt="Edo">';
 
     var SVG = {
@@ -59,7 +58,6 @@
         } catch(e) { return str; }
     }
 
-    // ── FIX : renderMarkdown — rendu visuel du Markdown ───────
     function renderMarkdown(text) {
         if (!text) return '';
         var html = text
@@ -125,7 +123,6 @@
             row.appendChild(av);
             var bubble = document.createElement('div');
             bubble.classList.add('edo-bubble', 'edo-bubble--bot');
-            // FIX : utiliser renderMarkdown au lieu de .replace(\n, <br>)
             bubble.innerHTML = renderMarkdown(text) + '<div class="edo-timestamp">' + getTime() + '</div>';
             row.appendChild(bubble);
             messages.appendChild(row);
@@ -305,7 +302,7 @@
             messages.appendChild(row); hp.remove();
         });
         try {
-            // FIX : utiliser le vrai studentId
+
             var resp = await fetch(apiUrl + '/conversations?user_id=' + studentId + '&course_id=' + courseId);
             var data = await resp.json();
             var list = hp.querySelector('#edo-history-list');
@@ -484,7 +481,6 @@
         return true;
     }
 
-    // ── État du niveau étudiant ────────────────────────────────
     var studentLevel     = null;
     var levelQuizDone    = false;
     var levelQuizPending = false;
@@ -504,7 +500,6 @@
         return false;
     }
 
-    // FIX : utiliser studentId variable (pas 0 hardcodé)
     async function loadStudentLevel(apiUrl, courseId) {
         try {
             var resp = await fetch(
@@ -665,7 +660,6 @@
             var resp = await fetch(apiUrl + '/level-quiz', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                // FIX : utiliser studentId variable
                 body: JSON.stringify({ course_id: courseId, student_id: studentId, conversation_id: convId })
             });
             if (!resp.ok) { levelQuizPending = false; onProceed(); return; }
@@ -702,7 +696,6 @@
                 var response = await fetch(apiUrl + '/ask', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    // FIX : utiliser studentId variable (plus 0 hardcodé)
                     body: JSON.stringify({
                         question:             question,
                         course_id:            courseId,
@@ -757,7 +750,6 @@
         document.body.appendChild(fab);
         document.body.appendChild(panel);
         loadLastConversation(apiUrl, courseId);
-        // FIX : plus besoin de passer studentId en paramètre, c'est une variable de module
         loadStudentLevel(apiUrl, courseId);
 
         fab.addEventListener('click', function () {

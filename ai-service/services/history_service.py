@@ -155,7 +155,7 @@ def save_student_level(user_id: int, course_id: int,
                 INSERT INTO edora_conversations
                 (user_id, course_id, conversation_id, role,
                  message, student_level, level_score, level_quiz_done)
-                VALUES (%s, %s, %s, 'system',
+                VALUES (%s, %s, %s, 'assistant',
                         'Quiz de niveau complété', %s, %s, 1)
             """, (user_id, course_id, conversation_id, level, score))
 
