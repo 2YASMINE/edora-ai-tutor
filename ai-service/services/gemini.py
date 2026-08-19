@@ -1,5 +1,5 @@
 import os
-import time
+import hashlib
 import logging
 import unicodedata
 import concurrent.futures
@@ -7,6 +7,13 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 import pymysql
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log,
+)
 
 load_dotenv(dotenv_path=os.path.join(
     os.path.dirname(__file__), '..', '..', '.env'))
@@ -22,8 +29,6 @@ logger = logging.getLogger("edora.gemini")
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "60"))
-GEMINI_RETRIES = 3
-GEMINI_RETRY_DELAY = 5
 HISTORY_WINDOW = 6
 MAX_INPUT_CHARS = 500
 MAX_OUTPUT_TOKENS = 2048
@@ -31,6 +36,37 @@ MAX_OUTPUT_TOKENS_QUIZ = 6144
 MAX_OUTPUT_TOKENS_RESUME = 3072
 
 NOT_FOUND_PHRASE = "Je n'ai pas trouvé cette information dans le contenu du cours"
+
+# ── Plafond tokens par session ────────────────────────────────────────────────
+SESSION_TOKEN_LIMIT = 50_000   # tokens max par session étudiant
+_session_tokens: dict = {}     # {student_id: total_tokens_utilisés}
+
+
+def check_token_budget(student_id: int, tokens_used: int) -> bool:
+    """
+    Vérifie si l'étudiant n'a pas dépassé son plafond de tokens.
+    Retourne False si le plafond est atteint.
+    """
+    current = _session_tokens.get(student_id, 0)
+    if current + tokens_used > SESSION_TOKEN_LIMIT:
+        logger.warning(
+            "Plafond tokens atteint — student_id: %s | total: %d | limite: %d",
+            student_id, current + tokens_used, SESSION_TOKEN_LIMIT
+        )
+        return False
+    _session_tokens[student_id] = current + tokens_used
+    logger.info(
+        "Budget tokens — student_id: %s | session: %d/%d tokens",
+        student_id, _session_tokens[student_id], SESSION_TOKEN_LIMIT
+    )
+    return True
+
+
+# ── Pseudonymisation RGPD ─────────────────────────────────────────────────────
+def pseudonymize_id(user_id: int) -> str:
+    """Hash SHA256 tronqué — jamais le vrai user_id envoyé à Gemini."""
+    return hashlib.sha256(str(user_id).encode()).hexdigest()[:16]
+
 
 # ── Mots-clés détresse ────────────────────────────────────────────────────────
 DISTRESS_KEYWORDS = [
@@ -485,8 +521,15 @@ def _call_gemini_api_quiz(prompt: str, system_prompt: str) -> str:
     return response.text
 
 
+@retry(
+    retry=retry_if_exception_type(Exception),
+    wait=wait_exponential(multiplier=1, min=4, max=60),
+    stop=stop_after_attempt(4),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True
+)
 def _call_gemini_api(prompt: str, system_prompt: str, max_tokens: int = MAX_OUTPUT_TOKENS):
-    """Appel synchrone isolé pour le timeout — retourne l'objet response complet."""
+    """Appel Gemini avec backoff exponentiel automatique via tenacity."""
     response = client.models.generate_content(
         model="gemini-3.5-flash",
         contents=prompt,
@@ -528,11 +571,9 @@ def validate_gemini_output(answer: str, task: str) -> dict:
     Valide la sortie Gemini avant de la retourner.
     Vérifie format, longueur et cohérence selon le type de tâche.
     """
-    # Longueur minimale
     if len(answer.strip()) < 10:
         return {"valid": False, "reason": "Réponse trop courte"}
 
-    # Longueur maximale selon tâche
     max_chars = {
         "quiz":      8000,
         "resume":    6000,
@@ -545,7 +586,6 @@ def validate_gemini_output(answer: str, task: str) -> dict:
         logger.warning("Réponse tronquée — %d chars > limite %d", len(answer), limit)
         answer = answer[:limit] + "\n\n[Réponse tronquée pour des raisons de performance]"
 
-    # Quiz : vérifier que c'est du JSON valide
     if task == "quiz":
         import json
         try:
@@ -553,9 +593,8 @@ def validate_gemini_output(answer: str, task: str) -> dict:
             if "questions" not in data:
                 return {"valid": False, "reason": "JSON quiz invalide — clé 'questions' manquante"}
         except json.JSONDecodeError:
-            pass  # sera géré à l'étape 11.5
+            pass
 
-    # Détection injection dans la sortie
     INJECTION_PATTERNS = [
         "ignore les instructions",
         "ignore previous",
@@ -590,7 +629,7 @@ def ask_gemini(
 
     # ── Détection détresse ────────────────────────────────────
     if check_distress(question):
-        logger.warning("⚠️  Signal de détresse détecté — student_id: %s", student_id)
+        logger.warning("⚠️  Signal de détresse détecté — student: %s", pseudonymize_id(student_id))
         return {
             "success": True,
             "answer": "Je sens que tu traverses peut-être un moment difficile. "
@@ -613,9 +652,11 @@ def ask_gemini(
             system_prompt = system_prompt + level_addon
             logger.info("Niveau injecté dans le prompt — level: %s", student_level)
 
+    # ── Log pseudonymisé (jamais le vrai user_id) ─────────────
+    pseudo = pseudonymize_id(student_id)
     logger.info(
-        "Appel Gemini — task: %s | level: %s | student_id: %s | chunks: %d | historique: %d",
-        task, student_level or "non détecté", student_id,
+        "Appel Gemini — task: %s | level: %s | student: %s | chunks: %d | historique: %d",
+        task, student_level or "non détecté", pseudo,
         len(context_chunks), len(conversation_history or [])
     )
 
@@ -628,86 +669,78 @@ def ask_gemini(
     elif task == "quiz":
         max_tokens = MAX_OUTPUT_TOKENS_QUIZ
 
-    # ── Retry ─────────────────────────────────────────────────
-    for attempt in range(1, GEMINI_RETRIES + 1):
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_call_gemini_api, prompt, system_prompt, max_tokens)
-                try:
-                    response = future.result(timeout=GEMINI_TIMEOUT)
-                except concurrent.futures.TimeoutError:
-                    logger.error("Timeout Gemini %ds (tentative %d/%d)",
-                                 GEMINI_TIMEOUT, attempt, GEMINI_RETRIES)
-                    if attempt < GEMINI_RETRIES:
-                        time.sleep(GEMINI_RETRY_DELAY)
-                        continue
-                    return {
-                        "success": False,
-                        "answer": "Le service IA met trop de temps à répondre. Veuillez réessayer.",
-                        "found_in_course": False,
-                        "chunks_used": 0,
-                        "error": f"Timeout après {GEMINI_TIMEOUT}s"
-                    }
-
-            answer = response.text
-
-            # ── Validation sortie ─────────────────────────────
-            validation = validate_gemini_output(answer, task)
-            if not validation["valid"]:
-                logger.warning("Sortie Gemini invalide — %s", validation["reason"])
+    # ── Appel Gemini avec backoff tenacity ────────────────────
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_call_gemini_api, prompt, system_prompt, max_tokens)
+            try:
+                response = future.result(timeout=GEMINI_TIMEOUT)
+            except concurrent.futures.TimeoutError:
+                logger.error("Timeout Gemini %ds", GEMINI_TIMEOUT)
                 return {
                     "success": False,
-                    "answer": "La réponse générée n'est pas valide. Veuillez réessayer.",
+                    "answer": "Le service IA met trop de temps à répondre. Veuillez réessayer.",
                     "found_in_course": False,
                     "chunks_used": 0,
-                    "error": validation["reason"]
+                    "error": f"Timeout après {GEMINI_TIMEOUT}s"
                 }
-            answer = validation.get("answer", answer)
 
-            # ── Token logging ─────────────────────────────────
-            usage = response.usage_metadata
-            tokens_in = getattr(usage, "prompt_token_count", 0) or 0
-            tokens_out = getattr(usage, "candidates_token_count", 0) or 0
-            cost_usd = (tokens_in * 0.075 + tokens_out * 0.30) / 1_000_000
-            logger.info("Tokens — in: %d | out: %d | coût: $%.6f",
-                        tokens_in, tokens_out, cost_usd)
-            _log_usage(student_id, course_id, task, tokens_in, tokens_out, cost_usd)
+        answer = response.text
 
-            found_in_course = bool(context_chunks) and NOT_FOUND_PHRASE not in answer
-            logger.info("Réponse reçue — task: %s | found_in_course: %s | %d chars",
-                        task, found_in_course, len(answer))
-
-            return {
-                "success": True,
-                "answer": answer,
-                "found_in_course": found_in_course,
-                "chunks_used": len(context_chunks),
-                "task_type": task
-            }
-
-        except Exception as e:
-            error_str = str(e)
-            if "503" in error_str and attempt < GEMINI_RETRIES:
-                logger.warning("503 Gemini — tentative %d/%d, retry %ds",
-                               attempt, GEMINI_RETRIES, GEMINI_RETRY_DELAY)
-                time.sleep(GEMINI_RETRY_DELAY)
-                continue
-            logger.error("Erreur Gemini — %s: %s", type(e).__name__, error_str)
+        # ── Validation sortie ─────────────────────────────────
+        validation = validate_gemini_output(answer, task)
+        if not validation["valid"]:
+            logger.warning("Sortie Gemini invalide — %s", validation["reason"])
             return {
                 "success": False,
-                "answer": "Une erreur est survenue. Veuillez réessayer.",
+                "answer": "La réponse générée n'est pas valide. Veuillez réessayer.",
                 "found_in_course": False,
                 "chunks_used": 0,
-                "error": error_str
+                "error": validation["reason"]
+            }
+        answer = validation.get("answer", answer)
+
+        # ── Token logging ─────────────────────────────────────
+        usage = response.usage_metadata
+        tokens_in  = getattr(usage, "prompt_token_count",     0) or 0
+        tokens_out = getattr(usage, "candidates_token_count", 0) or 0
+        cost_usd   = (tokens_in * 0.075 + tokens_out * 0.30) / 1_000_000
+        logger.info("Tokens — in: %d | out: %d | coût: $%.6f",
+                    tokens_in, tokens_out, cost_usd)
+        _log_usage(student_id, course_id, task, tokens_in, tokens_out, cost_usd)
+
+        # ── Vérification plafond session ──────────────────────
+        if not check_token_budget(student_id, tokens_in + tokens_out):
+            return {
+                "success": False,
+                "answer": "⚠️ Tu as atteint la limite d'utilisation pour cette session. "
+                          "Reviens plus tard ou contacte ton enseignant.",
+                "found_in_course": False,
+                "chunks_used": 0,
+                "error": "Session token limit exceeded"
             }
 
-    return {
-        "success": False,
-        "answer": "Le service IA est temporairement indisponible. Réessayez dans quelques instants.",
-        "found_in_course": False,
-        "chunks_used": 0,
-        "error": "Max retries atteint"
-    }
+        found_in_course = bool(context_chunks) and NOT_FOUND_PHRASE not in answer
+        logger.info("Réponse reçue — task: %s | found_in_course: %s | %d chars",
+                    task, found_in_course, len(answer))
+
+        return {
+            "success": True,
+            "answer": answer,
+            "found_in_course": found_in_course,
+            "chunks_used": len(context_chunks),
+            "task_type": task
+        }
+
+    except Exception as e:
+        logger.error("Erreur Gemini — %s: %s", type(e).__name__, str(e))
+        return {
+            "success": False,
+            "answer": "Une erreur est survenue. Veuillez réessayer.",
+            "found_in_course": False,
+            "chunks_used": 0,
+            "error": str(e)
+        }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
