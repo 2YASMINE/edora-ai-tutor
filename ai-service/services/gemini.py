@@ -43,21 +43,17 @@ _session_tokens: dict = {}     # {student_id: total_tokens_utilisés}
 
 
 def check_token_budget(student_id: int, tokens_used: int) -> bool:
-    """
-    Vérifie si l'étudiant n'a pas dépassé son plafond de tokens.
-    Retourne False si le plafond est atteint.
-    """
     current = _session_tokens.get(student_id, 0)
     if current + tokens_used > SESSION_TOKEN_LIMIT:
         logger.warning(
-            "Plafond tokens atteint — student_id: %s | total: %d | limite: %d",
-            student_id, current + tokens_used, SESSION_TOKEN_LIMIT
+            "Plafond tokens atteint — student: %s | total: %d | limite: %d",
+            pseudonymize_id(student_id), current + tokens_used, SESSION_TOKEN_LIMIT
         )
         return False
     _session_tokens[student_id] = current + tokens_used
     logger.info(
-        "Budget tokens — student_id: %s | session: %d/%d tokens",
-        student_id, _session_tokens[student_id], SESSION_TOKEN_LIMIT
+        "Budget tokens — student: %s | session: %d/%d tokens",
+        pseudonymize_id(student_id), _session_tokens[student_id], SESSION_TOKEN_LIMIT
     )
     return True
 
