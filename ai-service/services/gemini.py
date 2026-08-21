@@ -43,6 +43,21 @@ _session_tokens: dict = {}     # {student_id: total_tokens_utilisés}
 
 
 def check_token_budget(student_id: int, tokens_used: int) -> bool:
+ """
+    Vérifie si l'étudiant n'a pas dépassé le plafond de tokens par session.
+
+    Cumule les tokens utilisés dans le dictionnaire en mémoire `_session_tokens`.
+    Si le cumul dépasse SESSION_TOKEN_LIMIT (50 000), logue un warning et retourne False
+    sans mettre à jour le compteur.
+
+    Args:
+        student_id: Identifiant de l'étudiant (utilisé comme clé, pseudonymisé dans les logs).
+        tokens_used: Nombre de tokens (in + out) consommés pour la requête courante.
+
+    Returns:
+        True si le budget n'est pas dépassé (compteur mis à jour).
+        False si le plafond est atteint ou dépassé (compteur inchangé).
+    """
     current = _session_tokens.get(student_id, 0)
     if current + tokens_used > SESSION_TOKEN_LIMIT:
         logger.warning(
@@ -60,7 +75,18 @@ def check_token_budget(student_id: int, tokens_used: int) -> bool:
 
 # ── Pseudonymisation RGPD ─────────────────────────────────────────────────────
 def pseudonymize_id(user_id: int) -> str:
-    """Hash SHA256 tronqué — jamais le vrai user_id envoyé à Gemini."""
+    """
+    Retourne un hash SHA-256 tronqué à 16 caractères de l'identifiant utilisateur.
+
+    Utilisé pour pseudonymiser les logs conformément au RGPD :
+    le vrai user_id n'est jamais transmis à l'API Gemini ni écrit en clair dans les logs.
+
+    Args:
+        user_id: Identifiant numérique de l'étudiant.
+
+    Returns:
+        Chaîne hexadécimale de 16 caractères (ex. "a3f2c1d0e4b5f6a7").
+    """
     return hashlib.sha256(str(user_id).encode()).hexdigest()[:16]
 
 
@@ -77,6 +103,22 @@ DISTRESS_KEYWORDS = [
 
 def _log_usage(student_id: int, course_id: int, task_type: str,
                tokens_in: int, tokens_out: int, cost_usd: float):
+"""
+    Insère une ligne de suivi de consommation dans la table MariaDB `edora_usage_logs`.
+
+    Ouvre une connexion pymysql, insère les données, commite et ferme la connexion.
+    En cas d'erreur (DB indisponible, contrainte, etc.), logue l'erreur sans lever
+    d'exception pour ne pas bloquer la réponse à l'étudiant.
+
+    Args:
+        student_id:  Identifiant de l'étudiant (stocké tel quel en DB, hors logs externes).
+        course_id:   Identifiant du cours Moodle.
+        task_type:   Type de tâche Gemini ("chat", "quiz", "resume", "exemple", "expliquer").
+        tokens_in:   Nombre de tokens du prompt (prompt_token_count).
+        tokens_out:  Nombre de tokens de la réponse (candidates_token_count).
+        cost_usd:    Coût estimé en dollars selon la grille Gemini Flash
+                     (0.075 $/M tokens in, 0.30 $/M tokens out).
+    """
     try:
         conn = pymysql.connect(
             host=os.getenv("MYSQL_HOST", "localhost"),
@@ -345,6 +387,16 @@ TASK_KEYWORDS = {
 
 
 def _normalize(text: str) -> str:
+"""
+    Normalise une chaîne pour la comparaison de mots-clés :
+    supprime les accents (décomposition NFD + filtre Mn), met en minuscules et strip.
+
+    Args:
+        text: Texte brut à normaliser.
+
+    Returns:
+        Texte sans accents, en minuscules, sans espaces en tête/queue.
+    """
     return ''.join(
         c for c in unicodedata.normalize('NFD', text)
         if unicodedata.category(c) != 'Mn'
@@ -352,6 +404,19 @@ def _normalize(text: str) -> str:
 
 
 def classify_question(question: str) -> str:
+"""
+    Détermine le type de tâche pédagogique correspondant à la question de l'étudiant.
+
+    Parcourt TASK_KEYWORDS dans l'ordre (quiz → resume → exemple → expliquer).
+    La comparaison est faite après normalisation des deux côtés (accents supprimés,
+    minuscules). Retourne "chat" par défaut si aucun mot-clé ne correspond.
+
+    Args:
+        question: Question brute de l'étudiant (non tronquée à ce stade).
+
+    Returns:
+        Une des valeurs : "quiz", "resume", "exemple", "expliquer", "chat".
+    """
     q_norm = _normalize(question)
     for task, keywords in TASK_KEYWORDS.items():
         if any(_normalize(kw) in q_norm for kw in keywords):
@@ -366,11 +431,35 @@ def classify_question(question: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def check_distress(text: str) -> bool:
+"""
+    Détecte si le message de l'étudiant contient un mot-clé de détresse psychologique.
+
+    Comparaison insensible à la casse via `text.lower()`.
+    Liste définie dans DISTRESS_KEYWORDS (suicide, automutilation, etc.).
+
+    Args:
+        text: Message brut de l'étudiant.
+
+    Returns:
+        True si au moins un mot-clé de détresse est détecté, False sinon.
+    """
     t = text.lower()
     return any(kw in t for kw in DISTRESS_KEYWORDS)
 
 
 def sanitize_input(text: str) -> str:
+"""
+    Tronque l'entrée utilisateur à MAX_INPUT_CHARS (500) caractères.
+
+    Première ligne de défense contre les prompts trop longs avant
+    tout traitement ou appel à l'API Gemini.
+
+    Args:
+        text: Texte brut saisi par l'étudiant.
+
+    Returns:
+        Les MAX_INPUT_CHARS premiers caractères du texte.
+    """
     return text[:MAX_INPUT_CHARS]
 
 
@@ -379,6 +468,20 @@ def sanitize_input(text: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_context(context_chunks: list) -> str:
+"""
+    Formate les chunks RAG en blocs XML pour l'injection dans le prompt Gemini.
+
+    Chaque chunk est encadré dans une balise `<chunk_cours id='N' source='...'>`.
+    La source est lue depuis `chunk["metadata"]["source"]`, avec "cours" comme fallback.
+    Retourne un message d'absence de contenu si la liste est vide.
+
+    Args:
+        context_chunks: Liste de dicts {"text": str, "metadata": dict} issus de ChromaDB.
+
+    Returns:
+        Chaîne XML multi-blocs prête à être injectée dans le prompt,
+        ou "Aucun contenu de cours disponible pour cette question."
+    """
     if not context_chunks:
         return "Aucun contenu de cours disponible pour cette question."
     parts = []
@@ -393,6 +496,19 @@ def build_context(context_chunks: list) -> str:
 
 
 def build_history(conversation_history: list) -> str:
+"""
+    Formate les N derniers messages de l'historique pour injection dans le prompt.
+
+    Conserve uniquement les HISTORY_WINDOW (6) derniers messages.
+    Les rôles "user" et "assistant" sont traduits en "Étudiant" et "Edo".
+
+    Args:
+        conversation_history: Liste de dicts {"role": str, "content": str}.
+
+    Returns:
+        Bloc texte préfixé par "Historique récent :" avec un message par ligne,
+        ou chaîne vide si l'historique est vide.
+    """
     if not conversation_history:
         return ""
     lines = []
@@ -403,6 +519,20 @@ def build_history(conversation_history: list) -> str:
 
 
 def build_prompt(question: str, context_chunks: list, conversation_history: list = None) -> str:
+"""
+    Assemble le prompt final envoyé à Gemini en combinant contexte, historique et question.
+
+    Structure : balise <contexte_cours> → historique récent → balise <question_etudiant>
+    → instruction de mode. La question est tronquée à 500 caractères en sécurité.
+
+    Args:
+        question:             Question de l'étudiant (sera re-tronquée à 500 chars).
+        context_chunks:       Chunks RAG formatés via build_context.
+        conversation_history: Historique optionnel formaté via build_history.
+
+    Returns:
+        Prompt complet prêt à être passé à l'API Gemini.
+    """
     context = build_context(context_chunks)
     history = build_history(conversation_history or [])
     question_safe = question[:500]
@@ -484,10 +614,33 @@ Adapte TOUTES tes explications :
 
 
 def get_level_system_prompt(level: str) -> str:
+"""
+    Retourne le bloc d'instructions de niveau à injecter dans le system prompt Gemini.
+
+    Args:
+        level: Niveau détecté de l'étudiant ("debutant", "intermediaire", "avance").
+
+    Returns:
+        Bloc texte de consignes pédagogiques adaptées au niveau,
+        ou chaîne vide si le niveau n'est pas reconnu.
+    """
     return LEVEL_PROMPTS.get(level, "")
 
 
 def classify_level(score: int, total: int = 10) -> str:
+"""
+    Convertit un score de quiz en niveau pédagogique.
+
+    Seuils : ≤ 40 % → "debutant", ≤ 70 % → "intermediaire", > 70 % → "avance".
+    Retourne "intermediaire" si total vaut 0 (protection division par zéro).
+
+    Args:
+        score: Nombre de bonnes réponses obtenues par l'étudiant.
+        total: Nombre total de questions du quiz (défaut : 10).
+
+    Returns:
+        Une des valeurs : "debutant", "intermediaire", "avance".
+    """
     if total == 0:
         return "intermediaire"
     pct = score / total
@@ -504,7 +657,26 @@ def classify_level(score: int, total: int = 10) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _call_gemini_api_quiz(prompt: str, system_prompt: str) -> str:
-    """Appel Gemini dédié au quiz de niveau — retourne le texte directement."""
+
+    """
+    Appel Gemini principal avec retry et backoff exponentiel via tenacity.
+
+    Configuré avec 4 tentatives max, attente entre 4 s et 60 s (multiplier=1).
+    Logue un warning avant chaque nouvelle tentative. `reraise=True` propage
+    l'exception finale si toutes les tentatives échouent.
+
+    Args:
+        prompt:        Prompt complet assemblé par build_prompt.
+        system_prompt: System prompt sélectionné selon le type de tâche.
+        max_tokens:    Limite de tokens en sortie (défaut MAX_OUTPUT_TOKENS = 2048).
+
+    Returns:
+        Objet response Gemini complet (response.text, response.usage_metadata, etc.).
+
+    Raises:
+        Exception: Toute exception Gemini après épuisement des tentatives.
+    """
+_call_gemini_api
     response = client.models.generate_content(
         model="gemini-3.5-flash",
         contents=prompt,
@@ -539,6 +711,21 @@ def _call_gemini_api(prompt: str, system_prompt: str, max_tokens: int = MAX_OUTP
 
 
 def generate_level_quiz(context_chunks: list) -> dict:
+
+"""
+    Génère un quiz de 10 questions QCM pour détecter le niveau de l'étudiant.
+
+    Construit le contexte RAG via build_context, appelle _call_gemini_api_quiz
+    dans un ThreadPoolExecutor avec timeout GEMINI_TIMEOUT.
+
+    Args:
+        context_chunks: Liste de chunks RAG issus de ChromaDB (idéalement 8).
+
+    Returns:
+        {"success": True,  "quiz": "<texte Markdown du quiz>"}
+        {"success": False, "quiz": "", "error": "<message d'erreur>"}
+    """
+
     context = build_context(context_chunks)
     prompt = f"""Extraits du cours :
 {context}
@@ -564,8 +751,21 @@ pour évaluer le niveau de l'étudiant. Respecte exactement le format demandé."
 
 def validate_gemini_output(answer: str, task: str) -> dict:
     """
-    Valide la sortie Gemini avant de la retourner.
-    Vérifie format, longueur et cohérence selon le type de tâche.
+    Valide et assainit la sortie Gemini avant de la retourner au client.
+
+    Contrôles effectués dans l'ordre :
+    1. Longueur minimale (< 10 chars → invalide).
+    2. Troncature si dépassement des limites par tâche (quiz 8000, resume 6000, etc.).
+    3. Pour task="quiz" : tentative de parsing JSON et vérification de la clé "questions".
+    4. Détection de patterns d'injection de prompt dans la sortie.
+
+    Args:
+        answer: Texte brut retourné par Gemini.
+        task:   Type de tâche ("chat", "quiz", "resume", "exemple", "expliquer").
+
+    Returns:
+        {"valid": True,  "answer": "<texte potentiellement tronqué>"}
+        {"valid": False, "reason": "<raison de l'invalidité>"}
     """
     if len(answer.strip()) < 10:
         return {"valid": False, "reason": "Réponse trop courte"}
@@ -620,6 +820,40 @@ def ask_gemini(
     task_type: str = None,
     student_level: str = None,
 ) -> dict:
+"""
+    Point d'entrée principal pour interroger Gemini dans le contexte pédagogique Edora.
+
+    Pipeline complet :
+    1. Sanitisation de l'entrée (tronquée à 500 chars).
+    2. Détection de détresse → réponse de sécurité immédiate sans appel Gemini.
+    3. Classification de la tâche (task_type fourni ou détecté via classify_question).
+    4. Sélection du system prompt + injection du niveau étudiant si applicable.
+    5. Construction du prompt via build_prompt.
+    6. Appel Gemini via ThreadPoolExecutor avec timeout GEMINI_TIMEOUT.
+    7. Validation de la sortie via validate_gemini_output.
+    8. Logging des tokens et du coût dans edora_usage_logs.
+    9. Vérification du plafond de session (SESSION_TOKEN_LIMIT).
+
+    Args:
+        question:             Question de l'étudiant (brute, sera sanitisée).
+        context_chunks:       Chunks RAG issus de ChromaDB.
+        conversation_history: Historique récent de la conversation (dicts role/content).
+        student_id:           ID étudiant Moodle (pseudonymisé dans les logs).
+        course_id:            ID du cours Moodle.
+        task_type:            Type de tâche forcé (None = détection automatique).
+        student_level:        Niveau détecté ("debutant", "intermediaire", "avance" ou None).
+
+    Returns:
+        {
+            "success":        bool,
+            "answer":         str,
+            "found_in_course": bool,
+            "chunks_used":    int,
+            "task_type":      str   # présent si succès
+        }
+        En cas d'échec, "success" est False et "error" contient le message d'erreur.
+    """
+
     # ── Sécurité entrée ───────────────────────────────────────
     question = sanitize_input(question)
 

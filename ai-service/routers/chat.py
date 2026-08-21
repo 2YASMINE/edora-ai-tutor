@@ -28,11 +28,39 @@ semantic_cache = {}  # {question: {"embedding": [...], "response": {...}}}
 
 
 def cosine_similarity(v1: list, v2: list) -> float:
+"""
+    Calcule la similarité cosinus entre deux vecteurs d'embeddings.
+
+    Utilisée par le cache sémantique pour comparer l'embedding de la question
+    courante avec ceux déjà mis en cache.
+
+    Args:
+        v1: Premier vecteur (liste de floats).
+        v2: Deuxième vecteur (liste de floats, même dimension que v1).
+
+    Returns:
+        Score de similarité cosinus entre 0.0 et 1.0.
+    """
     a, b = np.array(v1), np.array(v2)
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
 def get_cached_response(question_embedding: list, course_id: int) -> dict | None:
+"""
+    Recherche une réponse en cache sémantique pour la question courante.
+
+    Parcourt semantic_cache et calcule la similarité cosinus entre l'embedding
+    de la question et chaque entrée du cache filtrée par course_id.
+    Retourne la meilleure réponse si le score dépasse CACHE_SIMILARITY_THRESHOLD (0.92).
+
+    Args:
+        question_embedding: Vecteur d'embedding de la question courante.
+        course_id:          ID du cours (évite les collisions entre cours).
+
+    Returns:
+        Dict réponse cachée {"answer", "found_in_course", "chunks_used", "sources", ...}
+        ou None si aucun hit au-dessus du seuil.
+    """
     best_score = 0
     best_response = None
     for key, entry in semantic_cache.items():
@@ -49,6 +77,19 @@ def get_cached_response(question_embedding: list, course_id: int) -> dict | None
 
 
 def save_to_cache(question: str, question_embedding: list, response: dict, course_id: int):
+"""
+    Sauvegarde une réponse dans le cache sémantique en mémoire.
+
+    Si le cache atteint MAX_CACHE_SIZE (100 entrées), supprime l'entrée la plus ancienne
+    (premier élément du dict, Python 3.7+ préserve l'ordre d'insertion).
+    La clé est la question normalisée (minuscules + strip).
+
+    Args:
+        question:          Question brute de l'étudiant (sera normalisée en clé).
+        question_embedding: Vecteur d'embedding pour les futures comparaisons cosinus.
+        response:          Dict réponse Gemini à mettre en cache.
+        course_id:         ID du cours associé à cette réponse.
+    """
     if len(semantic_cache) >= MAX_CACHE_SIZE:
         oldest = next(iter(semantic_cache))
         del semantic_cache[oldest]
@@ -92,7 +133,18 @@ SMALL_TALK_KEYWORDS = [
 
 
 def is_small_talk(question: str) -> bool:
-    """Détecte si la question est un message simple sans intention pédagogique."""
+   """
+    Détecte si la question est un message social sans intention pédagogique.
+
+    Condition : la question fait moins de 4 mots ET contient un mot-clé de SMALL_TALK_KEYWORDS.
+    Court-circuite le pipeline RAG complet pour ces messages (pas d'embedding, pas de ChromaDB).
+
+    Args:
+        question: Question brute de l'étudiant.
+
+    Returns:
+        True si la question est identifiée comme small talk, False sinon.
+    """
     q = question.lower().strip()
     if len(q.split()) < 4:
         return any(kw in q for kw in SMALL_TALK_KEYWORDS)
@@ -105,6 +157,27 @@ def is_small_talk(question: str) -> bool:
 
 @router.post("/level-quiz")
 async def get_level_quiz(request: LevelQuizRequest):
+"""
+    Génère le quiz de diagnostic de niveau pour un étudiant dans un cours.
+
+    Si le quiz a déjà été complété (quiz_already_done), retourne immédiatement
+    le niveau et le score existants sans régénérer.
+    Sinon, récupère jusqu'à 8 chunks RAG du cours via ChromaDB et appelle
+    generate_level_quiz pour produire un quiz de 10 questions QCM.
+
+    Args (body JSON via LevelQuizRequest):
+        course_id:       ID du cours Moodle.
+        student_id:      ID de l'étudiant (défaut 0).
+        conversation_id: UUID de la conversation courante (défaut "").
+
+    Returns:
+        {"already_done": True,  "level": str, "score": int}   si quiz déjà fait.
+        {"already_done": False, "quiz": str}                   sinon (Markdown du quiz).
+
+    Raises:
+        HTTPException 404: Aucun contenu de cours disponible dans ChromaDB.
+        HTTPException 503: Échec de la génération par Gemini.
+    """
     if quiz_already_done(request.student_id, request.course_id):
         level_info = get_student_level(request.student_id, request.course_id)
         return {
@@ -179,6 +252,18 @@ async def save_level(request: LevelSaveRequest):
 
 @router.get("/student-level")
 async def get_level(student_id: int = 0, course_id: int = 0):
+"""
+    Retourne le niveau pédagogique actuel d'un étudiant pour un cours.
+
+    Délègue directement à get_student_level (history_service).
+
+    Args (query params):
+        student_id: ID Moodle de l'étudiant.
+        course_id:  ID du cours Moodle.
+
+    Returns:
+        {"level": str|None, "score": int|None, "quiz_done": bool}
+    """
     info = get_student_level(student_id, course_id)
     return info
 
@@ -189,6 +274,38 @@ async def get_level(student_id: int = 0, course_id: int = 0):
 
 @router.post("/ask", response_model=AskResponse)
 async def ask(request: AskRequest):
+"""
+    Endpoint principal du tuteur IA : traite la question d'un étudiant et retourne une réponse pédagogique.
+
+    Pipeline en 13 étapes :
+    1.  Validation de la question (non vide, ≤ 500 chars).
+    2.  Classification du type de tâche (classify_question).
+    3.  Court-circuit small talk → appel Gemini sans RAG, sauvegarde et retour immédiat.
+    4.  Récupération du niveau étudiant (get_student_level).
+    5.  Calcul de l'embedding de la question.
+    6.  Vérification du cache sémantique → retour immédiat si hit.
+    7.  Détermination du nombre de chunks selon le type de tâche (3 à 15).
+    8.  Recherche ChromaDB (search_similar_chunks).
+    9.  Construction des context_chunks et sources.
+    10. Récupération et compression de l'historique (compress_history, max 8 tours).
+    11. Appel ask_gemini avec le niveau étudiant injecté.
+    12. Parsing JSON du quiz si task_type="quiz" (nettoyage des backticks).
+    13. Sauvegarde MariaDB + mise en cache (sauf quiz) + retour AskResponse.
+
+    Args (body JSON via AskRequest):
+        question:             Question de l'étudiant.
+        course_id:            ID du cours Moodle.
+        student_id:           ID de l'étudiant.
+        conversation_id:      UUID existant ou None (généré automatiquement).
+        conversation_history: Historique partiel envoyé par le client.
+
+    Returns:
+        AskResponse : {answer, conversation_id, sources, found_in_course, chunks_used, is_quiz_json}
+
+    Raises:
+        HTTPException 400: Question vide ou trop longue.
+        HTTPException 503: Erreur Gemini non récupérable.
+    """
     # Étape 1 : Validation
     if len(request.question.strip()) == 0:
         raise HTTPException(status_code=400, detail="La question ne peut pas être vide.")
@@ -365,6 +482,19 @@ async def ask(request: AskRequest):
 
 @router.get("/history")
 async def get_conversation_history(conversation_id: str, course_id: int = 0):
+"""
+    Retourne l'historique complet d'une conversation sous forme de liste de messages.
+
+    Args (query params):
+        conversation_id: UUID de la conversation.
+        course_id:       Non utilisé dans la requête SQL actuelle (réservé pour filtrage futur).
+
+    Returns:
+        {"conversation_id": str, "messages": [{"role", "message", "created_at"}], "count": int}
+
+    Raises:
+        HTTPException 500: Erreur de connexion ou de requête MariaDB.
+    """
     try:
         messages = get_history(conversation_id)
         return {
@@ -385,6 +515,23 @@ async def get_conversation_history(conversation_id: str, course_id: int = 0):
 
 @router.get("/conversations")
 async def get_conversations(user_id: int = 0, course_id: int = 0):
+"""
+    Retourne la liste des conversations d'un étudiant dans un cours, triées par date décroissante.
+
+    Groupe les messages par conversation_id, extrait le premier message user
+    comme titre (tronqué à 60 chars + "..."), et trie par created_at DESC.
+
+    Args (query params):
+        user_id:   ID Moodle de l'étudiant.
+        course_id: ID du cours Moodle.
+
+    Returns:
+        {"conversations": [{"conversation_id", "first_message", "created_at", "message_count"}]}
+        {"conversations": []} si aucune conversation existante.
+
+    Raises:
+        HTTPException 500: Erreur MariaDB.
+    """
     try:
         rows = get_user_history(user_id=user_id, course_id=course_id)
         if not rows:
@@ -416,6 +563,18 @@ async def get_conversations(user_id: int = 0, course_id: int = 0):
 
 @router.delete("/conversation/{conversation_id}")
 async def delete_conversation(conversation_id: str):
+"""
+    Supprime tous les messages d'une conversation de la table edora_conversations.
+
+    Args (path param):
+        conversation_id: UUID de la conversation à supprimer.
+
+    Returns:
+        {"success": True, "deleted_messages": int}  (nombre de lignes supprimées)
+
+    Raises:
+        HTTPException 500: Erreur MariaDB.
+    """
     try:
         from services.history_service import get_connection
         conn = get_connection()
