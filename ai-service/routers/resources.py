@@ -53,25 +53,44 @@ async def process_resource(
     file_path = None
 
     try:
-        # ── Etape 1 : Telecharger ──
-        file_path = await _download_file(file_url, resource_id, resource_type)
-        logger.info(f"[BG] Fichier telecharge : {file_path}")
+        
+         # ── Détection URL externe (YouTube, Vimeo, etc.) ──
+        external_domains = ["youtube.com", "youtu.be", "vimeo.com", "dailymotion.com"]
+        is_external_video = any(domain in file_url for domain in external_domains)
 
-        # ── Etape 2 : Extraire le texte ──
-        extraction = extract_text(file_path)
-        logger.info(f"[BG] Extraction : succes={extraction['success']} format={extraction.get('format')}")
+        if is_external_video:
+            from services.document_extractor import extract_text_from_url
+            tmp_dir = os.getenv("TMP_DIR", "C:/Users/wiki/edora_uploads")
+            os.makedirs(tmp_dir, exist_ok=True)
+            logger.info(f"[BG] URL externe détectée — téléchargement via yt-dlp : {file_url}")
+            extraction = extract_text_from_url(file_url, tmp_dir)
+            logger.info(f"[BG] Extraction URL : succes={extraction['success']} format={extraction.get('format')}")
+            if not extraction["success"]:
+                logger.error(f"[BG] Extraction URL échouée : {extraction['error']}")
+                return
+        else:
+            # ── Etape 1 : Telecharger depuis Moodle ──
+            file_path = await _download_file(file_url, resource_id, resource_type)
+            logger.info(f"[BG] Fichier telecharge : {file_path}")
 
-        if not extraction["success"]:
-            logger.error(f"[BG] Extraction echouee : {extraction['error']}")
-            return
+            # ── Etape 2 : Extraire le texte ──
+            extraction = extract_text(file_path)
+            logger.info(f"[BG] Extraction : succes={extraction['success']} format={extraction.get('format')}")
+
+            if not extraction["success"]:
+                logger.error(f"[BG] Extraction echouee : {extraction['error']}")
+                return
+
+    
 
         # ── Etape 3 : Chunking ──
         chunks = chunk_text(
-            text=extraction["text"],
-            source=file_url.split("/")[-1].split("?")[0],
-            course_id=course_id,
-            resource_id=resource_id
-        )
+    text=extraction["text"],
+    source=file_url.split("/")[-1].split("?")[0],
+    course_id=course_id,
+    resource_id=resource_id,
+    is_video=extraction.get("format") == "video"
+)
         logger.info(f"[BG] {len(chunks)} chunks crees")
 
         if not chunks:
@@ -154,11 +173,12 @@ async def upload_file(
             raise HTTPException(status_code=400, detail="Extraction échouée")
 
         chunks = chunk_text(
-            text=extraction["text"],
-            source=file.filename,
-            course_id=course_id,
-            resource_id=0
-        )
+    text=extraction["text"],
+    source=file.filename,
+    course_id=course_id,
+    resource_id=0,
+    is_video=extraction.get("format") == "video"
+)
 
         embedded_chunks = []
         for chunk in chunks:
@@ -224,11 +244,17 @@ async def _download_file(file_url: str, resource_id: int, resource_type: str = "
 
     if not extension:
         fallback_map = {
-            "pdf": ".pdf",
-            "docx": ".docx",
-            "pptx": ".pptx",
-            "txt": ".txt"
-        }
+    "pdf": ".pdf",
+    "docx": ".docx",
+    "pptx": ".pptx",
+    "txt": ".txt",
+    "video": ".mp4",
+    "mp4": ".mp4",
+    "avi": ".avi",
+    "mov": ".mov",
+    "mkv": ".mkv",
+    "webm": ".webm"
+}
         extension = fallback_map.get(resource_type.lower(), ".pdf")
 
     file_path = f"{tmp_dir}/resource_{resource_id}{extension}"
