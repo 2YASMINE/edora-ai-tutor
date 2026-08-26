@@ -311,14 +311,12 @@ def _extract_video(file_path: str) -> dict:
     import whisper
 
     # Assurer que ffmpeg est dans le PATH
-    # Assurer que ffmpeg est dans le PATH
+        # Assurer que ffmpeg est dans le PATH
     ffmpeg_path = os.getenv("FFMPEG_PATH", "")
     if ffmpeg_path and ffmpeg_path not in os.environ.get("PATH", ""):
-        os.environ["PATH"] = ffmpeg_path + \
-            os.pathsep + os.environ.get("PATH", "")
+        os.environ["PATH"] = ffmpeg_path + os.pathsep + os.environ.get("PATH", "")
 
     try:
-        ffmpeg_bin = "C:/Users/wiki/Downloads/ffmpeg-9.0.1-essentials_build/ffmpeg-9.0.1-essentials_build/bin"os.environ["PATH"] = ffmpeg_bin + os.pathsep + os.environ.get("PATH", "")
         model = whisper.load_model("base")
         result = model.transcribe(file_path)
 
@@ -326,7 +324,6 @@ def _extract_video(file_path: str) -> dict:
 
         if not segments:
             return _error("Aucun segment audio détecté dans la vidéo", format="video")
-
         lines = []
         for segment in segments:
             start = int(segment["start"])
