@@ -81,29 +81,37 @@ def extract_text_from_url(url: str, tmp_dir: str) -> dict:
         >>> print(result["text"])
         [00:00] Bonjour et bienvenue dans ce cours...
     """
+    
     try:
         output_path = os.path.join(tmp_dir, "%(id)s.%(ext)s")
         ydl_opts = {
             "format": "bestaudio/best",
             "outtmpl": output_path,
             "quiet": True,
+            "ffmpeg_location": "C:/Users/wiki/Downloads/ffmpeg-9.0.1-essentials_build/ffmpeg-9.0.1-essentials_build/bin",
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
                 "preferredquality": "192",
             }],
         }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_file = ydl.prepare_filename(info)
-
-        # Le fichier est converti en mp3 par le postprocessor
-        downloaded_file = downloaded_file.rsplit(".", 1)[0] + ".mp3"
-
+            base = os.path.splitext(downloaded_file)[0]
+            for ext in ['.mp3', '.m4a', '.webm', '.opus', '.ogg']:
+                candidate = base + ext
+                if os.path.exists(candidate):
+                    downloaded_file = candidate
+                    break
+        print("downloaded_file final:", downloaded_file)
         return _extract_video(downloaded_file)
+    
 
     except Exception as e:
         return _error(f"Erreur téléchargement URL : {str(e)}", format="video")
+    
 
 
 # ─────────────────────────────────────────
@@ -303,11 +311,14 @@ def _extract_video(file_path: str) -> dict:
     import whisper
 
     # Assurer que ffmpeg est dans le PATH
-    ffmpeg_path = r"C:\Users\wiki\Downloads\ffmpeg-9.0.1-essentials_build\ffmpeg-9.0.1-essentials_build\bin"
-    if ffmpeg_path not in os.environ.get("PATH", ""):
-        os.environ["PATH"] = ffmpeg_path + os.pathsep + os.environ.get("PATH", "")
+    # Assurer que ffmpeg est dans le PATH
+    ffmpeg_path = os.getenv("FFMPEG_PATH", "")
+    if ffmpeg_path and ffmpeg_path not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = ffmpeg_path + \
+            os.pathsep + os.environ.get("PATH", "")
 
     try:
+        ffmpeg_bin = "C:/Users/wiki/Downloads/ffmpeg-9.0.1-essentials_build/ffmpeg-9.0.1-essentials_build/bin"os.environ["PATH"] = ffmpeg_bin + os.pathsep + os.environ.get("PATH", "")
         model = whisper.load_model("base")
         result = model.transcribe(file_path)
 
