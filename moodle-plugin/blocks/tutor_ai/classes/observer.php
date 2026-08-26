@@ -28,8 +28,10 @@ class block_tutor_ai_observer {
      *               si aucun fichier éligible n'est trouvé, ou si le token est absent.
      */
     public static function course_module_created(\core\event\course_module_created $event): void {
-        $data = $event->get_data();
+        $data       = $event->get_data();
+        error_log('[Edora] Data complète : ' . json_encode($data['other']));
         $modulename = $data['other']['modulename'];
+        error_log('[Edora] Observer déclenché — module: ' . $modulename);
 
         // Modules supportés
         $supported_modules = ['resource', 'assign', 'folder', 'page', 'book'];
@@ -53,13 +55,14 @@ class block_tutor_ai_observer {
         // Récupération du module
         $cm = get_coursemodule_from_id($modulename, $resourceid);
         if (!$cm) {
+            error_log('[Edora] Module introuvable');
             return;
         }
 
         // Contexte du module
         $context = context_module::instance($cm->id);
 
-        // Récupération des fichiers
+        // Premier essai — récupération des fichiers
         $fs    = get_file_storage();
         $files = $fs->get_area_files(
             $context->id,
@@ -70,21 +73,39 @@ class block_tutor_ai_observer {
             false
         );
 
+        // Réessai après délai — vidéos converties par Moodle
         if (empty($files)) {
+            error_log('[Edora] Fichiers vides — retry dans 5s');
+            sleep(5);
+            $files = $fs->get_area_files(
+                $context->id,
+                $config['component'],
+                $config['filearea'],
+                $config['itemid'] !== null ? $config['itemid'] : false,
+                'filename',
+                false
+            );
+        }
+
+        if (empty($files)) {
+            error_log('[Edora] Aucun fichier trouvé même après retry');
             return;
         }
 
-        $allowed = ['pdf', 'docx', 'pptx', 'txt'];
+        $allowed          = ['pdf', 'docx', 'pptx', 'txt', 'mp4', 'avi', 'mov', 'mkv', 'webm'];
+        $video_extensions = ['mp4', 'avi', 'mov', 'mkv', 'webm'];
 
         foreach ($files as $file) {
             $filename  = $file->get_filename();
             $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 
+            error_log('[Edora] Fichier détecté : ' . $filename . ' | extension : ' . $extension);
+
             if (!in_array($extension, $allowed)) {
                 continue;
             }
 
-            $resource_type = $extension;
+            $resource_type = in_array($extension, $video_extensions) ? 'video' : $extension;
 
             // Token lu depuis la DB
             global $DB;
@@ -92,6 +113,7 @@ class block_tutor_ai_observer {
                 $DB->get_field('external_services', 'id', ['shortname' => 'edora_ai'])
             ]);
             if (!$token_record) {
+                error_log('[Edora] Token non trouvé');
                 return;
             }
             $token = $token_record->token;
@@ -113,7 +135,8 @@ class block_tutor_ai_observer {
                 'file_url'      => $file_url,
             ]);
 
-            // Appel HTTP POST vers FastAPI
+            error_log('[Edora] Envoi FastAPI — type: ' . $resource_type . ' | file: ' . $filename);
+
             $ch = curl_init('http://host.docker.internal:8000/upload-resource');
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST,           true);

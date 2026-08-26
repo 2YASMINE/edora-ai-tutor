@@ -373,6 +373,85 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         messages.scrollTop = messages.scrollHeight;
     }
 
+    function renderJsonQuiz(jsonText, messages) {
+    try {
+        var data = typeof jsonText === 'string' ? JSON.parse(jsonText) : jsonText;
+        var questions = data.questions;
+        if (!questions || questions.length === 0) return false;
+
+        var row = document.createElement('div');
+        row.classList.add('edo-bot-row');
+        var av = document.createElement('div'); av.className = 'edo-bot-avatar'; av.innerHTML = AVATAR_IMG_SM;
+        row.appendChild(av);
+        var container = document.createElement('div');
+        container.style.cssText = 'display:flex;flex-direction:column;gap:14px;max-width:88%;';
+
+        var score = { correct: 0, total: questions.length, answered: 0 };
+
+        questions.forEach(function(q, idx) {
+            var qDiv = document.createElement('div');
+            qDiv.style.cssText = 'background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px 16px;';
+            var qTitle = document.createElement('div');
+            qTitle.style.cssText = 'font-size:13px;font-weight:600;color:#1e293b;margin-bottom:10px;line-height:1.4;';
+            qTitle.textContent = 'Question ' + (idx + 1) + ' : ' + q.question;
+            qDiv.appendChild(qTitle);
+
+            var optContainer = document.createElement('div');
+            optContainer.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
+            var answered = false;
+
+            q.options.forEach(function(opt) {
+                var letter = opt.charAt(0);
+                var btn = document.createElement('button');
+                btn.style.cssText = 'text-align:left;padding:9px 13px;border-radius:8px;border:1.5px solid #e2e8f0;background:#ffffff;font-size:12.5px;color:#374151;cursor:pointer;transition:all 0.15s;width:100%;';
+                btn.innerHTML = '<strong>' + opt + '</strong>';
+                btn.addEventListener('mouseenter', function() { if (!answered) { btn.style.background='#f0f9ff'; btn.style.borderColor='#7dd3fc'; } });
+                btn.addEventListener('mouseleave', function() { if (!answered) { btn.style.background='#ffffff'; btn.style.borderColor='#e2e8f0'; } });
+                btn.addEventListener('click', function() {
+                    if (answered) return;
+                    answered = true; score.answered++;
+                    var isCorrect = (letter === q.answer);
+                    if (isCorrect) score.correct++;
+                    optContainer.querySelectorAll('button').forEach(function(b) {
+                        b.style.cursor = 'default';
+                        var bLetter = b.innerHTML.charAt(8);
+                        if (bLetter === q.answer) { b.style.background='#f0fdf4'; b.style.borderColor='#22c55e'; b.style.color='#15803d'; }
+                        else if (b === btn && !isCorrect) { b.style.background='#fef2f2'; b.style.borderColor='#ef4444'; b.style.color='#dc2626'; }
+                        else { b.style.opacity='0.4'; }
+                    });
+                    var expDiv = document.createElement('div');
+                    expDiv.style.cssText = 'margin-top:10px;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.5;' + (isCorrect ? 'background:#f0fdf4;border:1px solid #86efac;color:#15803d;' : 'background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;');
+                    expDiv.innerHTML = isCorrect ? '✅ <strong>Bonne réponse !</strong> ' + q.explanation : '❌ <strong>Mauvaise réponse.</strong> La bonne réponse est <strong>' + q.answer + '</strong>. ' + q.explanation;
+                    qDiv.appendChild(expDiv);
+                    messages.scrollTop = messages.scrollHeight;
+                    if (score.answered === score.total) {
+                        var pct = Math.round((score.correct / score.total) * 100);
+                        var emoji = pct >= 80 ? '🎉' : pct >= 50 ? '👍' : '💪';
+                        var msg = pct >= 80 ? 'Excellent travail !' : pct >= 50 ? 'Bon effort, continue !' : 'Continue à réviser !';
+                        var scoreDiv = document.createElement('div');
+                        scoreDiv.style.cssText = 'margin-top:6px;padding:14px;border-radius:10px;background:linear-gradient(135deg,#005f73,#0a9396);color:#fff;text-align:center;font-size:14px;';
+                        scoreDiv.innerHTML = emoji + ' <strong>Score : ' + score.correct + '/' + score.total + ' (' + pct + '%)</strong><br><span style="font-size:12px;opacity:0.9;">' + msg + '</span>';
+                        container.appendChild(scoreDiv);
+                        messages.scrollTop = messages.scrollHeight;
+                    }
+                });
+                optContainer.appendChild(btn);
+            });
+
+            qDiv.appendChild(optContainer);
+            container.appendChild(qDiv);
+        });
+
+        row.appendChild(container);
+        messages.appendChild(row);
+        messages.scrollTop = messages.scrollHeight;
+        return true;
+    } catch(e) {
+        console.warn('[Edora] renderJsonQuiz erreur:', e);
+        return false;
+    }
+}
+
     // ── Quiz interactif ────────────────────────────────────────
     function renderInteractiveQuiz(text, messages) {
         if (!text.includes('Bonne réponse') && !text.includes('✅')) return false;
@@ -707,13 +786,21 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
                 loadingRow.remove();
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 var data = await response.json();
+                console.log('is_quiz_json:', data.is_quiz_json, 'type:', typeof data.is_quiz_json);
+                console.log('Entrée dans le bloc is_quiz_json ?', data.is_quiz_json === true);
                 if (data.conversation_id) {
                     conversationId = data.conversation_id;
                     localStorage.setItem('edo_conv_' + courseId, conversationId);
                 }
                 var msgEl = document.getElementById('edo-messages');
-                var isQuiz = renderInteractiveQuiz(data.answer, msgEl);
-                if (!isQuiz) appendMessage(data.answer, 'bot');
+                var isQuiz = false;
+if (data.is_quiz_json === true) {
+    isQuiz = renderJsonQuiz(data.answer, msgEl);
+}
+if (!isQuiz) {
+    isQuiz = renderInteractiveQuiz(data.answer, msgEl);
+}
+if (!isQuiz) appendMessage(data.answer, 'bot');
                 conversationHistory.push({ role: 'assistant', content: data.answer });
                 if (data.sources && data.sources.length > 0 && data.found_in_course) {
                     renderSources(data.sources, msgEl);
