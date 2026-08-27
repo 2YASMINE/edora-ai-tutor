@@ -8,7 +8,7 @@ class block_tutor_ai_observer {
      *
      * Filtre les modules supportés (resource, assign, folder, page, book),
      * récupère les fichiers attachés via l'API Moodle File Storage,
-     * et envoie chaque fichier PDF/DOCX/PPTX/TXT au service FastAPI
+     * et envoie chaque fichier PDF/DOCX/PPTX/TXT/vidéo au service FastAPI
      * via une requête HTTP POST cURL vers /upload-resource.
      *
      * Flux complet :
@@ -16,11 +16,12 @@ class block_tutor_ai_observer {
      * 2. Résolution du course module ($cm) via get_coursemodule_from_id.
      * 3. Récupération du contexte Moodle (context_module::instance).
      * 4. Lecture des fichiers dans la filearea correspondante au type de module.
-     * 5. Filtrage par extension (pdf, docx, pptx, txt).
-     * 6. Lecture du token d'authentification webservice depuis external_tokens
+     * 5. Retry après 5s si les fichiers ne sont pas encore indexés par Moodle (vidéos).
+     * 6. Filtrage par extension (pdf, docx, pptx, txt, mp4, avi, mov, mkv, webm).
+     * 7. Lecture du token d'authentification webservice depuis external_tokens
      *    (service shortname : "edora_ai").
-     * 7. Construction de l'URL authentifiée pluginfile.php avec le token.
-     * 8. Envoi POST JSON vers http://host.docker.internal:8000/upload-resource
+     * 8. Construction de l'URL authentifiée pluginfile.php avec le token.
+     * 9. Envoi POST JSON vers http://host.docker.internal:8000/upload-resource
      *    avec {course_id, resource_id, resource_type, file_url}.
      *
      * @param \core\event\course_module_created $event Événement Moodle de création de module.
@@ -28,8 +29,9 @@ class block_tutor_ai_observer {
      *               si aucun fichier éligible n'est trouvé, ou si le token est absent.
      */
     public static function course_module_created(\core\event\course_module_created $event): void {
-        $data       = $event->get_data();
+        $data = $event->get_data();
         error_log('[Edora] Data complète : ' . json_encode($data['other']));
+
         $modulename = $data['other']['modulename'];
         error_log('[Edora] Observer déclenché — module: ' . $modulename);
 
@@ -61,9 +63,9 @@ class block_tutor_ai_observer {
 
         // Contexte du module
         $context = context_module::instance($cm->id);
+        $fs      = get_file_storage();
 
-        // Premier essai — récupération des fichiers
-        $fs    = get_file_storage();
+        // Premier essai
         $files = $fs->get_area_files(
             $context->id,
             $config['component'],

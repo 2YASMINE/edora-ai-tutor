@@ -1,3 +1,12 @@
+"""
+history_service.py — Gestion de l'historique des conversations et des niveaux étudiants.
+
+Ce module fournit toutes les opérations MariaDB liées aux conversations Edora :
+- Sauvegarde et récupération des messages (table edora_conversations)
+- Gestion du niveau pédagogique détecté par quiz (colonnes student_level, level_score)
+- Compression de l'historique long pour maîtriser les coûts Gemini
+"""
+
 import os
 import mysql.connector
 from dotenv import load_dotenv
@@ -9,16 +18,16 @@ logger = logging.getLogger("edora.history")
 
 def get_connection():
     """
-    Crée et retourne une connexion mysql.connector vers la base MariaDB Moodle.
+    Ouvre et retourne une connexion MariaDB à partir des variables d'environnement.
 
-    Les paramètres de connexion sont lus depuis les variables d'environnement :
+    Utilise mysql.connector avec les paramètres définis dans le .env :
     MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_ROOT_PASSWORD, MYSQL_DATABASE.
 
     Returns:
-        Objet connexion mysql.connector actif.
+        Connexion mysql.connector active. L'appelant est responsable de la fermer.
 
     Raises:
-        mysql.connector.Error: Si la connexion échoue (hôte inaccessible, auth, etc.).
+        mysql.connector.Error: Si la connexion échoue (hôte injoignable, credentials invalides).
     """
     return mysql.connector.connect(
         host=os.getenv("MYSQL_HOST", "localhost"),
@@ -31,16 +40,18 @@ def get_connection():
 
 def save_message(user_id: int, course_id: int, conversation_id: str, role: str, message: str):
     """
-    Insère un message dans la table `edora_conversations`.
+    Sauvegarde un message dans la table edora_conversations.
 
-    Ouvre une connexion, exécute l'INSERT, commite et ferme.
-    En cas d'erreur, logue sans lever d'exception pour ne pas bloquer le flux principal.
+    Appelée deux fois par question : une fois pour le message "user"
+    (question de l'étudiant) et une fois pour le message "assistant"
+    (réponse d'Edo). Le conversation_id permet de regrouper les messages
+    d'une même session de chat.
 
     Args:
-        user_id:         ID Moodle de l'étudiant.
-        course_id:       ID du cours Moodle.
-        conversation_id: UUID de la conversation (généré côté router si absent).
-        role:            "user" ou "assistant".
+        user_id:         Identifiant Moodle de l'étudiant (vrai ID, pas pseudonymisé).
+        course_id:       Identifiant du cours Moodle.
+        conversation_id: UUID unique de la conversation (ex: "conv-1786710816896").
+        role:            Rôle de l'auteur du message — "user" | "assistant" | "system".
         message:         Contenu textuel du message.
     """
     try:
@@ -61,14 +72,17 @@ def save_message(user_id: int, course_id: int, conversation_id: str, role: str, 
 
 def get_history(conversation_id: str) -> list:
     """
-    Récupère tous les messages d'une conversation triés par date croissante.
+    Récupère tous les messages d'une conversation dans l'ordre chronologique.
+
+    Utilisée par l'endpoint GET /history pour afficher l'historique complet
+    d'une conversation dans l'interface Moodle.
 
     Args:
-        conversation_id: UUID de la conversation.
+        conversation_id: UUID de la conversation à récupérer.
 
     Returns:
-        Liste de dicts {"role", "message", "created_at"} ordonnés ASC par created_at.
-        Liste vide en cas d'erreur ou de conversation inexistante.
+        Liste de dicts {"role": str, "message": str, "created_at": datetime},
+        triée par ordre chronologique croissant. Liste vide si erreur ou introuvable.
     """
     try:
         conn = get_connection()
@@ -90,17 +104,18 @@ def get_history(conversation_id: str) -> list:
 
 def get_user_history(user_id: int, course_id: int) -> list:
     """
-    Récupère tous les messages d'un étudiant dans un cours donné, toutes conversations confondues.
+    Récupère toutes les conversations d'un étudiant dans un cours donné.
 
-    Utilisé par l'endpoint GET /conversations pour reconstruire la liste des conversations.
+    Utilisée par l'endpoint GET /conversations pour afficher la liste
+    des conversations dans le panneau historique de l'interface chat.
 
     Args:
-        user_id:   ID Moodle de l'étudiant.
-        course_id: ID du cours Moodle.
+        user_id:   Identifiant Moodle de l'étudiant.
+        course_id: Identifiant du cours — filtre les conversations au cours actif.
 
     Returns:
-        Liste de dicts {"conversation_id", "role", "message", "created_at"} triés ASC.
-        Liste vide en cas d'erreur.
+        Liste de dicts {"conversation_id", "role", "message", "created_at"},
+        triée par ordre chronologique. Liste vide si erreur ou aucune conversation.
     """
     try:
         conn = get_connection()
@@ -125,20 +140,22 @@ def get_user_history(user_id: int, course_id: int) -> list:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_student_level(user_id: int, course_id: int) -> dict:
-   """
-    Récupère le niveau pédagogique détecté d'un étudiant pour un cours donné.
+    """
+    Récupère le niveau pédagogique détecté d'un étudiant pour un cours.
 
-    Effectue deux requêtes successives si nécessaire :
-    1. Cherche la ligne la plus récente où student_level IS NOT NULL.
-    2. Si aucune, vérifie si level_quiz_done = 1 existe (quiz fait mais niveau non stocké).
+    Interroge la table edora_conversations sur les colonnes student_level,
+    level_score, level_quiz_done. Le niveau est persisté après le quiz initial
+    et réutilisé à chaque session pour adapter les prompts Gemini.
 
     Args:
-        user_id:   ID Moodle de l'étudiant.
-        course_id: ID du cours Moodle.
+        user_id:   Identifiant Moodle de l'étudiant.
+        course_id: Identifiant du cours.
 
     Returns:
-        {"level": str|None, "score": int|None, "quiz_done": bool}
-        En cas d'erreur : {"level": None, "score": None, "quiz_done": False}
+        Dict avec trois clés :
+        - "level": str | None — "debutant" | "intermediaire" | "avance" | None
+        - "score": int | None — Score obtenu au quiz (sur 10)
+        - "quiz_done": bool — True si le quiz a été complété (même sans niveau stocké)
     """
     try:
         conn = get_connection()
@@ -160,7 +177,6 @@ def get_student_level(user_id: int, course_id: int) -> dict:
                 "score":     row["level_score"],
                 "quiz_done": bool(row["level_quiz_done"])
             }
-        # Vérifier si le quiz a été fait (même sans niveau stocké)
         conn2 = get_connection()
         cursor2 = conn2.cursor(dictionary=True)
         cursor2.execute("""
@@ -186,28 +202,25 @@ def get_student_level(user_id: int, course_id: int) -> dict:
 def save_student_level(user_id: int, course_id: int,
                        conversation_id: str, level: str, score: int):
     """
-    Persiste le niveau détecté de l'étudiant après le quiz de diagnostic.
+    Sauvegarde le niveau pédagogique détecté après la complétion du quiz.
 
-    Met à jour toutes les lignes existantes de l'étudiant dans le cours
-    (student_level, level_score, level_quiz_done = 1).
-    Si aucune ligne n'existe encore (rowcount == 0), insère une ligne de référence
-    avec role='assistant' et message='Quiz de niveau complété'.
+    Met à jour toutes les lignes existantes de l'étudiant dans ce cours
+    (UPDATE) et marque level_quiz_done=1. Si l'étudiant n'a aucune ligne
+    existante (première interaction), insère une ligne de référence système.
 
     Args:
-        user_id:         ID Moodle de l'étudiant.
-        course_id:       ID du cours Moodle.
-        conversation_id: UUID de la conversation courante.
-        level:           Niveau classifié ("debutant", "intermediaire", "avance").
-        score:           Score obtenu au quiz (nombre de bonnes réponses sur 10).
+        user_id:         Identifiant Moodle de l'étudiant.
+        course_id:       Identifiant du cours.
+        conversation_id: UUID de la conversation active lors du quiz.
+        level:           Niveau calculé — "debutant" | "intermediaire" | "avance".
+        score:           Nombre de bonnes réponses obtenues (sur 10).
 
     Returns:
-        True si la sauvegarde a réussi, False en cas d'exception.
+        True si la sauvegarde a réussi, False en cas d'erreur.
     """
     try:
         conn = get_connection()
         cursor = conn.cursor()
-
-        # Mettre à jour la conversation courante
         cursor.execute("""
             UPDATE edora_conversations
             SET student_level   = %s,
@@ -215,9 +228,6 @@ def save_student_level(user_id: int, course_id: int,
                 level_quiz_done = 1
             WHERE user_id = %s AND course_id = %s
         """, (level, score, user_id, course_id))
-
-        # Si aucune ligne n'existe encore (première interaction),
-        # insérer une ligne de référence
         if cursor.rowcount == 0:
             cursor.execute("""
                 INSERT INTO edora_conversations
@@ -226,7 +236,6 @@ def save_student_level(user_id: int, course_id: int,
                 VALUES (%s, %s, %s, 'assistant',
                         'Quiz de niveau complété', %s, %s, 1)
             """, (user_id, course_id, conversation_id, level, score))
-
         conn.commit()
         cursor.close()
         conn.close()
@@ -241,17 +250,20 @@ def save_student_level(user_id: int, course_id: int,
 
 
 def quiz_already_done(user_id: int, course_id: int) -> bool:
-     """
-    Vérifie rapidement si l'étudiant a déjà complété le quiz de niveau pour ce cours.
+    """
+    Vérifie rapidement si l'étudiant a déjà complété le quiz de niveau.
 
-    Effectue un SELECT 1 ... LIMIT 1 sur level_quiz_done = 1 pour minimiser la charge.
+    Utilisée au début de checkAndTriggerLevelQuiz() côté frontend et dans
+    l'endpoint /level-quiz côté backend pour éviter de re-déclencher le quiz
+    à chaque nouvelle session.
 
     Args:
-        user_id:   ID Moodle de l'étudiant.
-        course_id: ID du cours Moodle.
+        user_id:   Identifiant Moodle de l'étudiant.
+        course_id: Identifiant du cours.
 
     Returns:
-        True si une ligne avec level_quiz_done = 1 existe, False sinon ou en cas d'erreur.
+        True si une ligne avec level_quiz_done=1 existe pour cet étudiant/cours.
+        False si le quiz n'a pas encore été fait ou en cas d'erreur.
     """
     try:
         conn = get_connection()
@@ -269,50 +281,45 @@ def quiz_already_done(user_id: int, course_id: int) -> bool:
         logger.error(f"Erreur vérification quiz niveau : {str(e)}")
         return False
 
+
 def compress_history(history: list, max_turns: int = 8) -> list:
     """
-    Compresse l'historique de conversation si celui-ci dépasse max_turns échanges.
+    Compresse l'historique de conversation quand il dépasse le seuil de tours.
 
-    Un "tour" = 1 message user + 1 message assistant = 2 entrées.
-    Si len(history) > max_turns * 2 :
-      - Les messages anciens sont résumés via summarize_history (gemini.py).
-      - Le résumé est injecté comme premier message avec role="system".
-      - Les max_turns * 2 messages récents sont conservés intacts.
-    Si le résumé échoue, seuls les messages récents sont retournés (sans message system).
+    Évite la croissance quadratique du coût tokens sur les longues conversations.
+    Si l'historique dépasse max_turns échanges (= max_turns * 2 messages),
+    les messages anciens sont résumés via summarize_history() et remplacés
+    par un seul message system contenant le résumé.
+
+    Exemple avec max_turns=8 et 20 messages dans history :
+    - old_messages  = messages[0:4]   (les 4 anciens)
+    - recent_messages = messages[4:]  (les 16 récents conservés)
+    - Résultat : [{"role": "system", "content": "Résumé: ..."}, ...16 messages récents]
 
     Args:
-        history:    Liste de dicts {"role": str, "content": str}.
-        max_turns:  Nombre maximum de tours à conserver sans compression (défaut : 8).
+        history:   Liste complète de messages {"role": str, "content": str}.
+                   Contient les messages déjà envoyés par le frontend.
+        max_turns: Nombre maximum d'échanges (user+assistant) avant compression.
+                   Un échange = 2 messages. Défaut : 8 (= 16 messages max).
 
     Returns:
-        Historique potentiellement compressé :
-        [{"role": "system", "content": "Résumé..."}] + messages_récents
-        ou simplement messages_récents si la compression a échoué.
+        Liste compressée avec un message system de résumé en tête (si compression),
+        ou la liste originale si elle n'excède pas le seuil.
+        En cas d'échec du résumé, retourne uniquement les messages récents.
     """
-    # Un "tour" = 1 message user + 1 message assistant = 2 entrées
     max_messages = max_turns * 2
-
     if len(history) <= max_messages:
-        return history  # pas besoin de compresser
-
-    # Séparer : anciens tours à résumer / tours récents à garder
-    old_messages  = history[:-max_messages]
+        return history
+    old_messages    = history[:-max_messages]
     recent_messages = history[-max_messages:]
-
-    # Résumer les anciens tours via Gemini
     from services.gemini import summarize_history
     summary_text = summarize_history(old_messages)
-
     if not summary_text:
-        # Si le résumé échoue, on garde juste les messages récents
         logger.warning("Résumé historique échoué — on garde uniquement les %d derniers messages", max_messages)
         return recent_messages
-
-    # Construire l'historique compressé
     compressed = [
         {"role": "system", "content": f"Résumé des échanges précédents : {summary_text}"}
     ] + recent_messages
-
     logger.info(
         "Historique compressé — %d anciens messages → 1 résumé + %d récents",
         len(old_messages), len(recent_messages)

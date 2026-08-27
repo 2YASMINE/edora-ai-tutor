@@ -1,12 +1,14 @@
 """
 Service d'extraction de texte depuis les ressources pédagogiques Moodle.
-Formats supportés : PDF (natif), DOCX, PPTX, TXT, Vidéo (Whisper)
+Formats supportés : PDF (natif), DOCX, PPTX (texte natif + OCR images), TXT, Vidéo (Whisper)
 """
 
 import os
+import io
 import pdfplumber
 from docx import Document
 from pptx import Presentation
+from pptx.util import Inches
 import yt_dlp
 
 
@@ -81,7 +83,6 @@ def extract_text_from_url(url: str, tmp_dir: str) -> dict:
         >>> print(result["text"])
         [00:00] Bonjour et bienvenue dans ce cours...
     """
-    
     try:
         output_path = os.path.join(tmp_dir, "%(id)s.%(ext)s")
         ydl_opts = {
@@ -107,11 +108,9 @@ def extract_text_from_url(url: str, tmp_dir: str) -> dict:
                     break
         print("downloaded_file final:", downloaded_file)
         return _extract_video(downloaded_file)
-    
 
     except Exception as e:
         return _error(f"Erreur téléchargement URL : {str(e)}", format="video")
-    
 
 
 # ─────────────────────────────────────────
@@ -202,26 +201,90 @@ def _extract_docx(file_path: str) -> dict:
 
 def _extract_pptx(file_path: str) -> dict:
     """
-    Extrait le texte d'un fichier PowerPoint (.pptx) slide par slide
-    via python-pptx. Chaque slide est préfixée par [Slide N] pour
-    conserver la structure lors du chunking.
+    Extrait le texte d'un fichier PowerPoint (.pptx) slide par slide via python-pptx,
+    enrichi par OCR (pytesseract + Pillow) sur les images embarquées dans chaque slide.
+
+    Pour chaque slide :
+      1. Extraction du texte natif depuis tous les shapes textuels.
+      2. Détection des shapes de type image (MSO_SHAPE_TYPE.PICTURE = 13).
+      3. Pour chaque image : conversion en PIL.Image → OCR pytesseract (fra+eng).
+      4. Fusion texte natif + texte OCR sous le préfixe [Slide N].
+
+    Configuration Tesseract :
+      Le chemin vers tesseract.exe est lu depuis la variable d'environnement
+      TESSERACT_PATH (définie dans .env). Fallback sur le PATH système si absent.
 
     Args:
         file_path (str): Chemin absolu vers le fichier PPTX.
 
     Returns:
-        dict: Texte extrait avec le nombre de slides comme page_count.
+        dict: Texte extrait (natif + OCR) avec le nombre de slides comme page_count.
+              Si pytesseract n'est pas disponible, retourne uniquement le texte natif
+              avec un warning dans la console sans faire échouer l'extraction.
+
+    Example output (text):
+        [Slide 1]
+        Introduction aux bases de données
+        Un SGBD permet de stocker et interroger des données structurées.
+        [OCR] Schéma entité-relation : Entité → Attribut → Clé primaire
+
+        [Slide 2]
+        Les jointures SQL
+        [OCR] SELECT * FROM A INNER JOIN B ON A.id = B.id
     """
     try:
+        # ── Configuration Tesseract ───────────────────────────────────
+        tesseract_path = os.getenv("TESSERACT_PATH", "")
+        ocr_available = False
+
+        try:
+            import pytesseract
+            from PIL import Image
+
+            if tesseract_path:
+                pytesseract.pytesseract.tesseract_cmd = tesseract_path
+
+            # Test rapide pour valider que Tesseract est fonctionnel
+            pytesseract.get_tesseract_version()
+            ocr_available = True
+        except Exception as ocr_init_error:
+            print(f"[PPTX] OCR non disponible — texte natif uniquement : {ocr_init_error}")
+
+        # ── Extraction slide par slide ────────────────────────────────
         prs = Presentation(file_path)
         slides_text = []
 
         for i, slide in enumerate(prs.slides, start=1):
-            slide_content = []
-            for shape in slide.shapes:
-                if hasattr(shape, "text") and shape.text.strip():
-                    slide_content.append(shape.text.strip())
+            native_parts = []   # texte natif des shapes textuels
+            ocr_parts    = []   # texte OCR des images
 
+            for shape in slide.shapes:
+
+                # 1. Texte natif
+                if hasattr(shape, "text") and shape.text.strip():
+                    native_parts.append(shape.text.strip())
+
+                # 2. OCR sur les images
+                if ocr_available and shape.shape_type == 13:  # MSO_SHAPE_TYPE.PICTURE
+                    try:
+                        image_blob = shape.image.blob
+                        pil_image  = Image.open(io.BytesIO(image_blob)).convert("RGB")
+
+                        ocr_text = pytesseract.image_to_string(
+                            pil_image,
+                            lang="fra+eng",
+                            config="--psm 6"
+                        ).strip()
+
+                        if ocr_text:
+                            ocr_parts.append(f"[OCR] {ocr_text}")
+
+                    except Exception as img_error:
+                        print(f"[PPTX] OCR image slide {i} ignorée : {img_error}")
+                        continue
+
+            # ── Assemblage de la slide ────────────────────────────────
+            slide_content = native_parts + ocr_parts
             if slide_content:
                 slides_text.append(f"[Slide {i}]\n" + "\n".join(slide_content))
 
@@ -231,11 +294,11 @@ def _extract_pptx(file_path: str) -> dict:
             return _error("Aucun texte trouvé dans ce fichier PowerPoint", format="pptx")
 
         return {
-            "success": True,
-            "text": full_text,
+            "success":    True,
+            "text":       full_text,
             "page_count": len(prs.slides),
-            "format": "pptx",
-            "error": None
+            "format":     "pptx",
+            "error":      None
         }
 
     except Exception as e:
@@ -310,8 +373,6 @@ def _extract_video(file_path: str) -> dict:
     """
     import whisper
 
-    # Assurer que ffmpeg est dans le PATH
-        # Assurer que ffmpeg est dans le PATH
     ffmpeg_path = os.getenv("FFMPEG_PATH", "")
     if ffmpeg_path and ffmpeg_path not in os.environ.get("PATH", ""):
         os.environ["PATH"] = ffmpeg_path + os.pathsep + os.environ.get("PATH", "")
@@ -324,9 +385,10 @@ def _extract_video(file_path: str) -> dict:
 
         if not segments:
             return _error("Aucun segment audio détecté dans la vidéo", format="video")
+
         lines = []
         for segment in segments:
-            start = int(segment["start"])
+            start   = int(segment["start"])
             minutes = start // 60
             seconds = start % 60
             timestamp = f"[{minutes:02d}:{seconds:02d}]"
@@ -335,11 +397,11 @@ def _extract_video(file_path: str) -> dict:
         full_text = "\n".join(lines)
 
         return {
-            "success": True,
-            "text": full_text,
+            "success":    True,
+            "text":       full_text,
             "page_count": None,
-            "format": "video",
-            "error": None
+            "format":     "video",
+            "error":      None
         }
 
     except Exception as e:
@@ -363,9 +425,9 @@ def _error(message: str, format: str = "unknown", page_count: int = None) -> dic
         dict: {"success": False, "text": "", "page_count": ..., "format": ..., "error": ...}
     """
     return {
-        "success": False,
-        "text": "",
+        "success":    False,
+        "text":       "",
         "page_count": page_count,
-        "format": format,
-        "error": message
+        "format":     format,
+        "error":      message
     }

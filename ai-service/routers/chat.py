@@ -28,7 +28,7 @@ semantic_cache = {}  # {question: {"embedding": [...], "response": {...}}}
 
 
 def cosine_similarity(v1: list, v2: list) -> float:
-"""
+    """
     Calcule la similarité cosinus entre deux vecteurs d'embeddings.
 
     Utilisée par le cache sémantique pour comparer l'embedding de la question
@@ -46,7 +46,7 @@ def cosine_similarity(v1: list, v2: list) -> float:
 
 
 def get_cached_response(question_embedding: list, course_id: int) -> dict | None:
-"""
+    """
     Recherche une réponse en cache sémantique pour la question courante.
 
     Parcourt semantic_cache et calcule la similarité cosinus entre l'embedding
@@ -77,7 +77,7 @@ def get_cached_response(question_embedding: list, course_id: int) -> dict | None
 
 
 def save_to_cache(question: str, question_embedding: list, response: dict, course_id: int):
-"""
+    """
     Sauvegarde une réponse dans le cache sémantique en mémoire.
 
     Si le cache atteint MAX_CACHE_SIZE (100 entrées), supprime l'entrée la plus ancienne
@@ -133,7 +133,7 @@ SMALL_TALK_KEYWORDS = [
 
 
 def is_small_talk(question: str) -> bool:
-   """
+    """
     Détecte si la question est un message social sans intention pédagogique.
 
     Condition : la question fait moins de 4 mots ET contient un mot-clé de SMALL_TALK_KEYWORDS.
@@ -157,7 +157,7 @@ def is_small_talk(question: str) -> bool:
 
 @router.post("/level-quiz")
 async def get_level_quiz(request: LevelQuizRequest):
-"""
+    """
     Génère le quiz de diagnostic de niveau pour un étudiant dans un cours.
 
     Si le quiz a déjà été complété (quiz_already_done), retourne immédiatement
@@ -252,7 +252,7 @@ async def save_level(request: LevelSaveRequest):
 
 @router.get("/student-level")
 async def get_level(student_id: int = 0, course_id: int = 0):
-"""
+    """
     Retourne le niveau pédagogique actuel d'un étudiant pour un cours.
 
     Délègue directement à get_student_level (history_service).
@@ -274,7 +274,7 @@ async def get_level(student_id: int = 0, course_id: int = 0):
 
 @router.post("/ask", response_model=AskResponse)
 async def ask(request: AskRequest):
-"""
+    """
     Endpoint principal du tuteur IA : traite la question d'un étudiant et retourne une réponse pédagogique.
 
     Pipeline en 13 étapes :
@@ -482,7 +482,7 @@ async def ask(request: AskRequest):
 
 @router.get("/history")
 async def get_conversation_history(conversation_id: str, course_id: int = 0):
-"""
+    """
     Retourne l'historique complet d'une conversation sous forme de liste de messages.
 
     Args (query params):
@@ -515,7 +515,7 @@ async def get_conversation_history(conversation_id: str, course_id: int = 0):
 
 @router.get("/conversations")
 async def get_conversations(user_id: int = 0, course_id: int = 0):
-"""
+    """
     Retourne la liste des conversations d'un étudiant dans un cours, triées par date décroissante.
 
     Groupe les messages par conversation_id, extrait le premier message user
@@ -563,7 +563,7 @@ async def get_conversations(user_id: int = 0, course_id: int = 0):
 
 @router.delete("/conversation/{conversation_id}")
 async def delete_conversation(conversation_id: str):
-"""
+    """
     Supprime tous les messages d'une conversation de la table edora_conversations.
 
     Args (path param):

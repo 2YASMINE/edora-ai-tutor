@@ -43,7 +43,7 @@ _session_tokens: dict = {}     # {student_id: total_tokens_utilisés}
 
 
 def check_token_budget(student_id: int, tokens_used: int) -> bool:
- """
+    """
     Vérifie si l'étudiant n'a pas dépassé le plafond de tokens par session.
 
     Cumule les tokens utilisés dans le dictionnaire en mémoire `_session_tokens`.
@@ -103,7 +103,7 @@ DISTRESS_KEYWORDS = [
 
 def _log_usage(student_id: int, course_id: int, task_type: str,
                tokens_in: int, tokens_out: int, cost_usd: float):
-"""
+    """
     Insère une ligne de suivi de consommation dans la table MariaDB `edora_usage_logs`.
 
     Ouvre une connexion pymysql, insère les données, commite et ferme la connexion.
@@ -387,7 +387,7 @@ TASK_KEYWORDS = {
 
 
 def _normalize(text: str) -> str:
-"""
+    """
     Normalise une chaîne pour la comparaison de mots-clés :
     supprime les accents (décomposition NFD + filtre Mn), met en minuscules et strip.
 
@@ -404,7 +404,7 @@ def _normalize(text: str) -> str:
 
 
 def classify_question(question: str) -> str:
-"""
+    """
     Détermine le type de tâche pédagogique correspondant à la question de l'étudiant.
 
     Parcourt TASK_KEYWORDS dans l'ordre (quiz → resume → exemple → expliquer).
@@ -431,7 +431,7 @@ def classify_question(question: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def check_distress(text: str) -> bool:
-"""
+    """
     Détecte si le message de l'étudiant contient un mot-clé de détresse psychologique.
 
     Comparaison insensible à la casse via `text.lower()`.
@@ -448,7 +448,7 @@ def check_distress(text: str) -> bool:
 
 
 def sanitize_input(text: str) -> str:
-"""
+    """
     Tronque l'entrée utilisateur à MAX_INPUT_CHARS (500) caractères.
 
     Première ligne de défense contre les prompts trop longs avant
@@ -468,7 +468,7 @@ def sanitize_input(text: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_context(context_chunks: list) -> str:
-"""
+    """
     Formate les chunks RAG en blocs XML pour l'injection dans le prompt Gemini.
 
     Chaque chunk est encadré dans une balise `<chunk_cours id='N' source='...'>`.
@@ -496,7 +496,7 @@ def build_context(context_chunks: list) -> str:
 
 
 def build_history(conversation_history: list) -> str:
-"""
+    """
     Formate les N derniers messages de l'historique pour injection dans le prompt.
 
     Conserve uniquement les HISTORY_WINDOW (6) derniers messages.
@@ -519,7 +519,7 @@ def build_history(conversation_history: list) -> str:
 
 
 def build_prompt(question: str, context_chunks: list, conversation_history: list = None) -> str:
-"""
+    """
     Assemble le prompt final envoyé à Gemini en combinant contexte, historique et question.
 
     Structure : balise <contexte_cours> → historique récent → balise <question_etudiant>
@@ -614,7 +614,7 @@ Adapte TOUTES tes explications :
 
 
 def get_level_system_prompt(level: str) -> str:
-"""
+    """
     Retourne le bloc d'instructions de niveau à injecter dans le system prompt Gemini.
 
     Args:
@@ -628,7 +628,7 @@ def get_level_system_prompt(level: str) -> str:
 
 
 def classify_level(score: int, total: int = 10) -> str:
-"""
+    """
     Convertit un score de quiz en niveau pédagogique.
 
     Seuils : ≤ 40 % → "debutant", ≤ 70 % → "intermediaire", > 70 % → "avance".
@@ -657,26 +657,21 @@ def classify_level(score: int, total: int = 10) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _call_gemini_api_quiz(prompt: str, system_prompt: str) -> str:
-
     """
-    Appel Gemini principal avec retry et backoff exponentiel via tenacity.
+    Appel Gemini dédié à la génération du quiz de niveau (sans décorateur retry).
 
-    Configuré avec 4 tentatives max, attente entre 4 s et 60 s (multiplier=1).
-    Logue un warning avant chaque nouvelle tentative. `reraise=True` propage
-    l'exception finale si toutes les tentatives échouent.
+    Utilise MAX_OUTPUT_TOKENS_QUIZ (6144) et temperature 0.3.
 
     Args:
-        prompt:        Prompt complet assemblé par build_prompt.
-        system_prompt: System prompt sélectionné selon le type de tâche.
-        max_tokens:    Limite de tokens en sortie (défaut MAX_OUTPUT_TOKENS = 2048).
+        prompt:        Prompt complet avec les extraits de cours.
+        system_prompt: System prompt LEVEL_QUIZ_SYSTEM_PROMPT.
 
     Returns:
-        Objet response Gemini complet (response.text, response.usage_metadata, etc.).
+        Texte Markdown du quiz généré par Gemini.
 
     Raises:
-        Exception: Toute exception Gemini après épuisement des tentatives.
+        Exception: Toute exception Gemini est propagée à l'appelant.
     """
-_call_gemini_api
     response = client.models.generate_content(
         model="gemini-3.5-flash",
         contents=prompt,
@@ -697,7 +692,24 @@ _call_gemini_api
     reraise=True
 )
 def _call_gemini_api(prompt: str, system_prompt: str, max_tokens: int = MAX_OUTPUT_TOKENS):
-    """Appel Gemini avec backoff exponentiel automatique via tenacity."""
+    """
+    Appel Gemini principal avec retry et backoff exponentiel via tenacity.
+
+    Configuré avec 4 tentatives max, attente entre 4 s et 60 s (multiplier=1).
+    Logue un warning avant chaque nouvelle tentative. `reraise=True` propage
+    l'exception finale si toutes les tentatives échouent.
+
+    Args:
+        prompt:        Prompt complet assemblé par build_prompt.
+        system_prompt: System prompt sélectionné selon le type de tâche.
+        max_tokens:    Limite de tokens en sortie (défaut MAX_OUTPUT_TOKENS = 2048).
+
+    Returns:
+        Objet response Gemini complet (response.text, response.usage_metadata, etc.).
+
+    Raises:
+        Exception: Toute exception Gemini après épuisement des tentatives.
+    """
     response = client.models.generate_content(
         model="gemini-3.5-flash",
         contents=prompt,
@@ -711,8 +723,7 @@ def _call_gemini_api(prompt: str, system_prompt: str, max_tokens: int = MAX_OUTP
 
 
 def generate_level_quiz(context_chunks: list) -> dict:
-
-"""
+    """
     Génère un quiz de 10 questions QCM pour détecter le niveau de l'étudiant.
 
     Construit le contexte RAG via build_context, appelle _call_gemini_api_quiz
@@ -725,7 +736,6 @@ def generate_level_quiz(context_chunks: list) -> dict:
         {"success": True,  "quiz": "<texte Markdown du quiz>"}
         {"success": False, "quiz": "", "error": "<message d'erreur>"}
     """
-
     context = build_context(context_chunks)
     prompt = f"""Extraits du cours :
 {context}
@@ -820,7 +830,7 @@ def ask_gemini(
     task_type: str = None,
     student_level: str = None,
 ) -> dict:
-"""
+    """
     Point d'entrée principal pour interroger Gemini dans le contexte pédagogique Edora.
 
     Pipeline complet :
@@ -853,7 +863,6 @@ def ask_gemini(
         }
         En cas d'échec, "success" est False et "error" contient le message d'erreur.
     """
-
     # ── Sécurité entrée ───────────────────────────────────────
     question = sanitize_input(question)
 
