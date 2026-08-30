@@ -3,6 +3,9 @@
  * @author Islem Troudi — Phase 7 (historique + panneau latéral)
  * @author Yasmine — Floating button + MariaDB schema + Phase 8 (level detection, cache, markdown)
  * @fix Islem — studentId depuis dataset, renderMarkdown intégré
+ * @feature Islem  : TTS (Text-To-Speech) via Web Speech API
+ * @feature Islem  : Dark / Light mode toggle + CSS variables + localStorage
+ * @update Dark mode redesign — palette bleu foncé / orange / cyan
  */
 
 (function () {
@@ -15,10 +18,665 @@
 
     var rootEl     = document.getElementById('edo-chat-root');
     var avatarUrl  = rootEl ? rootEl.dataset.avatarUrl : '';
-
     var studentId  = rootEl ? (rootEl.dataset.studentId || '0') : '0';
 
-var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;object-fit:cover;margin:-25%;" alt="Edo">';
+    var rawLang   = rootEl ? (rootEl.dataset.lang || '') : '';
+    var ttsLang   = rawLang.length >= 2
+        ? (rawLang.includes('-') ? rawLang : rawLang + '-' + rawLang.toUpperCase())
+        : (navigator.language || 'fr-FR');
+
+    var currentTtsBtn = null;
+
+    var EDO_THEME_KEY = 'edo_theme';
+
+    var SVG_MOON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    var SVG_SUN  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+
+    function injectThemeStyles() {
+if (document.getElementById('edo-theme-style')) return;
+var style = document.createElement('style');
+style.id = 'edo-theme-style';
+        style.textContent = `
+/* ════════════════════════════════════════════════════════════════
+   EDORA AI TUTOR — THEME SYSTEM v2
+   Deep Space Glass Design
+   Palette dark  : #07090f (fond) / #0e1420 (panel) / #141d2e (surface)
+   Cyan electric : #22d3ee   |   Ambre : #f59e0b   |   Indigo : #6366f1
+   ════════════════════════════════════════════════════════════════ */
+/* ── Transitions globales ─────────────────────────────────────── */
+#edo-panel, #edo-panel *,
+#edo-fab {
+    transition-property: background, background-color, color, border-color, box-shadow, opacity;
+    transition-duration: 280ms;
+    transition-timing-function: ease;
+}
+/* ════════════════════════════════════════════════════════════════
+   LIGHT MODE — palette teal conservée (inchangée)
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="light"],
+#edo-panel:not([data-theme]) {
+    --edo-bg:                #ffffff;
+    --edo-bg-secondary:      #f9fafb;
+    --edo-surface:           #f0f7f6;
+    --edo-border:            #e5e7eb;
+    --edo-border-light:      #edf0f3;
+    --edo-text:              #111827;
+    --edo-text-muted:        #6b7280;
+    --edo-text-light:        #9ca3af;
+    --edo-bubble-bot-bg:     #f0f7f6;
+    --edo-bubble-bot-border: #d1e8e4;
+    --edo-bubble-user-bg:    linear-gradient(135deg, #005f73, #0a9396);
+    --edo-input-bg:          #f9fafb;
+    --edo-input-border:      #e5e7eb;
+    --edo-shortcut-bg:       #f0f7f6;
+    --edo-shortcut-border:   #d1e8e4;
+    --edo-shortcut-text:     #005f73;
+    --edo-action-bg:         #f9fafb;
+    --edo-action-border:     #e5e7eb;
+    --edo-footer-bg:         #f9fafb;
+    --edo-footer-border:     #edf0f3;
+    --edo-shadow:            0 8px 32px rgba(0,0,0,0.12);
+    --edo-send-bg:           linear-gradient(135deg, #005f73, #0a9396);
+    --edo-send-shadow:       0 4px 14px rgba(0,95,115,0.4);
+    --edo-accent:            #005f73;
+    --edo-accent2:           #0a9396;
+    --edo-header-bg:         linear-gradient(135deg, #005f73, #0a9396);
+    --edo-fab-bg:            linear-gradient(135deg, #005f73, #0a9396);
+    --edo-dot-active:        #0a9396;
+    --edo-input-row-bg:      #ffffff;
+    --edo-shortcuts-bg:      transparent;
+}
+/* ════════════════════════════════════════════════════════════════
+   DARK MODE — Deep Space Glass
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] {
+    /* ── Fonds ──────────────────────────────── */
+    --edo-bg:                #07090f;
+    --edo-bg-secondary:      #0e1420;
+    --edo-surface:           #141d2e;
+    --edo-surface2:          #1a2540;
+    --edo-border:            rgba(34,211,238,0.1);
+    --edo-border-light:      rgba(34,211,238,0.06);
+    --edo-border-strong:     rgba(34,211,238,0.22);
+    /* ── Texte ──────────────────────────────── */
+    --edo-text:              #e2e8f5;
+    --edo-text-muted:        #64748b;
+    --edo-text-light:        #334155;
+    /* ── Bulles ─────────────────────────────── */
+    --edo-bubble-bot-bg:     #0e1420;
+    --edo-bubble-bot-border: rgba(34,211,238,0.14);
+    --edo-bubble-user-bg:    linear-gradient(135deg, #6366f1, #4f46e5);
+    /* ── Input ──────────────────────────────── */
+    --edo-input-bg:          #0e1420;
+    --edo-input-border:      rgba(34,211,238,0.15);
+    --edo-input-row-bg:      #07090f;
+    /* ── Raccourcis ─────────────────────────── */
+    --edo-shortcuts-bg:      #07090f;
+    --edo-shortcut-bg:       #0e1420;
+    --edo-shortcut-border:   rgba(34,211,238,0.14);
+    --edo-shortcut-text:     #22d3ee;
+    /* ── Actions ────────────────────────────── */
+    --edo-action-bg:         #0e1420;
+    --edo-action-border:     rgba(34,211,238,0.12);
+    /* ── Footer ─────────────────────────────── */
+    --edo-footer-bg:         #07090f;
+    --edo-footer-border:     rgba(34,211,238,0.06);
+    /* ── Ombres & lueurs ────────────────────── */
+    --edo-shadow:            0 32px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(34,211,238,0.08), 0 0 60px rgba(34,211,238,0.03);
+    /* ── Bouton send — ambre ────────────────── */
+    --edo-send-bg:           linear-gradient(135deg, #f59e0b, #d97706);
+    --edo-send-shadow:       0 4px 20px rgba(245,158,11,0.45);
+    /* ── Accents ────────────────────────────── */
+    --edo-accent:            #22d3ee;
+    --edo-accent2:           #f59e0b;
+    /* ── Header ─────────────────────────────── */
+    --edo-header-bg:         linear-gradient(135deg, #07090f 0%, #0e1420 100%);
+    /* ── FAB ─────────────────────────────────── */
+    --edo-fab-bg:            linear-gradient(135deg, #f59e0b, #d97706);
+    /* ── Dot ─────────────────────────────────── */
+    --edo-dot-active:        #22d3ee;
+}
+/* ════════════════════════════════════════════════════════════════
+   APPLICATION — PANEL GLOBAL
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] {
+    background: var(--edo-bg) !important;
+    color: var(--edo-text) !important;
+    box-shadow: var(--edo-shadow) !important;
+    border: 1px solid rgba(34,211,238,0.08) !important;
+}
+/* ── Zone messages ───────────────────────────────────────────── */
+#edo-panel[data-theme="dark"] .edo-messages {
+    background: var(--edo-bg) !important;
+}
+/* ── Header ─────────────────────────────────────────────────── */
+#edo-panel[data-theme="dark"] .edo-header {
+    background: var(--edo-header-bg) !important;
+    border-bottom: 1px solid rgba(34,211,238,0.12) !important;
+    position: relative;
+}
+/* Ligne lumineuse cyan sous le header */
+#edo-panel[data-theme="dark"] .edo-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 10%; right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #22d3ee, transparent);
+    opacity: 0.4;
+}
+#edo-panel[data-theme="dark"] .edo-name {
+    color: #f1f5f9 !important;
+}
+#edo-panel[data-theme="dark"] .edo-subtitle {
+    color: rgba(226,232,245,0.55) !important;
+}
+#edo-panel[data-theme="dark"] .edo-dot--green {
+    background: #22d3ee !important;
+    box-shadow: 0 0 8px rgba(34,211,238,0.8), 0 0 16px rgba(34,211,238,0.3) !important;
+}
+#edo-panel[data-theme="dark"] .edo-name-badge {
+    background: rgba(34,211,238,0.15) !important;
+    color: #22d3ee !important;
+    border: 1px solid rgba(34,211,238,0.25) !important;
+}
+/* ── Boutons header ──────────────────────────────────────────── */
+#edo-panel[data-theme="dark"] .edo-header__btn {
+    color: rgba(226,232,245,0.7) !important;
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(34,211,238,0.12) !important;
+}
+#edo-panel[data-theme="dark"] .edo-header__btn:hover {
+    background: rgba(34,211,238,0.1) !important;
+    border-color: rgba(34,211,238,0.3) !important;
+    color: #22d3ee !important;
+}
+/* ── Bulles bot ──────────────────────────────────────────────── */
+#edo-panel[data-theme="dark"] .edo-bubble--bot {
+    background: var(--edo-bubble-bot-bg) !important;
+    border: 1px solid var(--edo-bubble-bot-border) !important;
+    color: var(--edo-text) !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3) !important;
+}
+/* ── Bulles user ─────────────────────────────────────────────── */
+#edo-panel[data-theme="dark"] .edo-bubble--user {
+    background: var(--edo-bubble-user-bg) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.35) !important;
+}
+/* ── Timestamps ──────────────────────────────────────────────── */
+#edo-panel[data-theme="dark"] .edo-timestamp {
+    color: var(--edo-text-light) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   RACCOURCIS — FIX PRINCIPAL (zone blanche)
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-shortcuts {
+    background: var(--edo-bg) !important;
+    border-top: 1px solid rgba(34,211,238,0.07) !important;
+    border-bottom: 1px solid rgba(34,211,238,0.07) !important;
+    padding: 8px 10px !important;
+    gap: 6px !important;
+}
+#edo-panel[data-theme="dark"] .edo-shortcut {
+    background: #0e1420 !important;
+    border: 1px solid rgba(34,211,238,0.14) !important;
+    color: #22d3ee !important;
+    border-radius: 10px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    padding: 8px 6px !important;
+    gap: 5px !important;
+    transition: all 0.2s ease !important;
+    position: relative;
+    overflow: hidden;
+}
+#edo-panel[data-theme="dark"] .edo-shortcut::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(34,211,238,0.06), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+#edo-panel[data-theme="dark"] .edo-shortcut:hover {
+    background: #141d2e !important;
+    border-color: rgba(34,211,238,0.35) !important;
+    color: #67e8f9 !important;
+    box-shadow: 0 0 14px rgba(34,211,238,0.1), 0 2px 8px rgba(0,0,0,0.3) !important;
+    transform: translateY(-1px);
+}
+#edo-panel[data-theme="dark"] .edo-shortcut:hover::before {
+    opacity: 1;
+}
+#edo-panel[data-theme="dark"] .edo-shortcut svg {
+    color: #22d3ee !important;
+    opacity: 0.8;
+}
+/* ════════════════════════════════════════════════════════════════
+   INPUT ROW — FIX (fond blanc)
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-input-row {
+    background: var(--edo-bg) !important;
+    border-top: 1px solid rgba(34,211,238,0.08) !important;
+    position: relative;
+}
+/* Ligne lumineuse ambre au-dessus de l'input */
+#edo-panel[data-theme="dark"] .edo-input-row::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 15%; right: 15%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(245,158,11,0.4), transparent);
+}
+#edo-panel[data-theme="dark"] .edo-input {
+    background: #0e1420 !important;
+    border: 1px solid rgba(34,211,238,0.15) !important;
+    color: var(--edo-text) !important;
+    border-radius: 12px !important;
+}
+#edo-panel[data-theme="dark"] .edo-input::placeholder {
+    color: rgba(100,116,139,0.8) !important;
+}
+#edo-panel[data-theme="dark"] .edo-input:focus {
+    border-color: rgba(34,211,238,0.45) !important;
+    box-shadow: 0 0 0 3px rgba(34,211,238,0.08), 0 0 20px rgba(34,211,238,0.05) !important;
+    outline: none !important;
+}
+/* ── Icônes input (attach, mic) ──────────────────────────────── */
+#edo-panel[data-theme="dark"] .edo-input-icon {
+    color: rgba(100,116,139,0.8) !important;
+    border-color: rgba(34,211,238,0.1) !important;
+    background: rgba(255,255,255,0.02) !important;
+}
+#edo-panel[data-theme="dark"] .edo-input-icon:hover {
+    color: #22d3ee !important;
+    background: rgba(34,211,238,0.08) !important;
+    border-color: rgba(34,211,238,0.28) !important;
+}
+/* ── Bouton send ─────────────────────────────────────────────── */
+#edo-panel[data-theme="dark"] .edo-send-btn {
+    background: var(--edo-send-bg) !important;
+    box-shadow: var(--edo-send-shadow) !important;
+    border-radius: 12px !important;
+}
+#edo-panel[data-theme="dark"] .edo-send-btn:hover {
+    transform: scale(1.06) !important;
+    box-shadow: 0 6px 24px rgba(245,158,11,0.55) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   FOOTER
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-footer {
+    background: var(--edo-bg) !important;
+    border-top: 1px solid rgba(34,211,238,0.06) !important;
+    color: rgba(100,116,139,0.7) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   BOUTONS ACTION (Copier, Régénérer, Écouter, Like, Dislike)
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-action-btn {
+    background: #0e1420 !important;
+    border: 1px solid rgba(34,211,238,0.1) !important;
+    color: rgba(100,116,139,0.9) !important;
+}
+#edo-panel[data-theme="dark"] .edo-action-btn:hover {
+    background: #141d2e !important;
+    border-color: rgba(34,211,238,0.28) !important;
+    color: #22d3ee !important;
+}
+/* TTS actif */
+#edo-panel[data-theme="dark"] .edo-btn-tts[style*="0a9396"],
+#edo-panel[data-theme="dark"] .edo-btn-tts[style*="00c8e0"] {
+    color: #22d3ee !important;
+    border-color: rgba(34,211,238,0.5) !important;
+    background: rgba(34,211,238,0.08) !important;
+    box-shadow: 0 0 12px rgba(34,211,238,0.15) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   SUGGESTIONS DYNAMIQUES
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-suggestions {
+    background: var(--edo-bg) !important;
+    border-top: 1px solid rgba(34,211,238,0.07) !important;
+}
+#edo-panel[data-theme="dark"] .edo-suggestion-btn {
+    background: #0e1420 !important;
+    border: 1px solid rgba(34,211,238,0.12) !important;
+    color: var(--edo-text) !important;
+}
+#edo-panel[data-theme="dark"] .edo-suggestion-btn:hover {
+    background: #141d2e !important;
+    border-color: rgba(34,211,238,0.3) !important;
+    color: #22d3ee !important;
+}
+#edo-panel[data-theme="dark"] .edo-suggestion-icon {
+    color: #22d3ee !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   QUIZ CARDS
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-quiz-card {
+    background: #0e1420 !important;
+    border-color: rgba(34,211,238,0.15) !important;
+    color: var(--edo-text) !important;
+}
+#edo-panel[data-theme="dark"] .edo-quiz-card [style*="color:#1e293b"] {
+    color: #e2e8f5 !important;
+}
+/* Options quiz */
+#edo-panel[data-theme="dark"] .edo-quiz-card button[style*="background:#ffffff"],
+#edo-panel[data-theme="dark"] .edo-quiz-card button[style*="background:#fff"] {
+    background: #141d2e !important;
+    border-color: rgba(34,211,238,0.14) !important;
+    color: #e2e8f5 !important;
+}
+#edo-panel[data-theme="dark"] .edo-quiz-card button:hover {
+    background: #1a2540 !important;
+    border-color: rgba(34,211,238,0.3) !important;
+}
+/* Option correcte */
+#edo-panel[data-theme="dark"] .edo-quiz-card button[style*="background:#f0fdf4"] {
+    background: rgba(34,197,94,0.1) !important;
+    border-color: rgba(34,197,94,0.4) !important;
+    color: #4ade80 !important;
+}
+/* Option incorrecte */
+#edo-panel[data-theme="dark"] .edo-quiz-card button[style*="background:#fef2f2"] {
+    background: rgba(239,68,68,0.1) !important;
+    border-color: rgba(239,68,68,0.4) !important;
+    color: #f87171 !important;
+}
+/* Score quiz */
+#edo-panel[data-theme="dark"] [style*="background:linear-gradient(135deg,#005f73"] {
+    background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
+    box-shadow: 0 4px 20px rgba(99,102,241,0.4) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   SOURCES RAG
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-src-card {
+    background: #0e1420 !important;
+    border-color: rgba(34,211,238,0.15) !important;
+    border-left-color: #22d3ee !important;
+    color: var(--edo-text) !important;
+}
+#edo-panel[data-theme="dark"] .edo-src-card [style*="color:#4b5563"] {
+    color: rgba(226,232,245,0.7) !important;
+}
+#edo-panel[data-theme="dark"] .edo-src-card [style*="color:#0a9396"] {
+    color: #22d3ee !important;
+}
+#edo-panel[data-theme="dark"] .edo-src-card [style*="border-top:1px solid #b2d8d8"] {
+    border-top-color: rgba(34,211,238,0.12) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   PANNEAU HISTORIQUE
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] #edo-history-panel {
+    background: #07090f !important;
+    color: var(--edo-text) !important;
+}
+#edo-panel[data-theme="dark"] #edo-history-list button {
+    background: #0e1420 !important;
+    border-color: rgba(34,211,238,0.12) !important;
+    color: var(--edo-text) !important;
+}
+#edo-panel[data-theme="dark"] #edo-history-list button:hover {
+    background: #141d2e !important;
+    border-color: rgba(34,211,238,0.28) !important;
+}
+#edo-panel[data-theme="dark"] #edo-new-conv {
+    border-color: rgba(34,211,238,0.3) !important;
+    color: #22d3ee !important;
+    background: rgba(34,211,238,0.04) !important;
+}
+#edo-panel[data-theme="dark"] #edo-new-conv:hover {
+    background: rgba(34,211,238,0.09) !important;
+    border-color: rgba(34,211,238,0.5) !important;
+}
+/* Header historique */
+#edo-panel[data-theme="dark"] #edo-history-panel > div:first-child {
+    background: linear-gradient(135deg, #07090f, #0e1420) !important;
+    border-bottom: 1px solid rgba(34,211,238,0.12) !important;
+}
+/* Bordure séparatrice */
+#edo-panel[data-theme="dark"] #edo-history-panel > div:nth-child(2) {
+    border-bottom-color: rgba(34,211,238,0.08) !important;
+    background: #07090f !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   MODAL SUPPRESSION
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] #edo-delete-modal > div {
+    background: #0e1420 !important;
+    border: 1px solid rgba(34,211,238,0.12) !important;
+    color: var(--edo-text) !important;
+}
+#edo-panel[data-theme="dark"] #edo-del-cancel {
+    background: #141d2e !important;
+    border-color: rgba(34,211,238,0.15) !important;
+    color: var(--edo-text) !important;
+}
+#edo-panel[data-theme="dark"] #edo-del-cancel:hover {
+    border-color: rgba(34,211,238,0.3) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   BADGE NIVEAU
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] #edo-level-badge {
+    background: rgba(34,211,238,0.08) !important;
+    color: #22d3ee !important;
+    border: 1px solid rgba(34,211,238,0.2) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   DOTS CHARGEMENT
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-dot-anim:nth-child(1) { background: #22d3ee !important; }
+#edo-panel[data-theme="dark"] .edo-dot-anim:nth-child(2) { background: #f59e0b !important; }
+#edo-panel[data-theme="dark"] .edo-dot-anim:nth-child(3) { background: #6366f1 !important; }
+#edo-panel[data-theme="dark"] .edo-thinking__text {
+    color: rgba(100,116,139,0.9) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   SÉPARATEURS
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-messages > div[style*="height:1px"] {
+    background: rgba(34,211,238,0.12) !important;
+}
+#edo-panel[data-theme="dark"] .edo-messages > div[style*="color:#9ca3af"] {
+    color: rgba(100,116,139,0.7) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   HEADINGS MARKDOWN
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-bubble--bot h2,
+#edo-panel[data-theme="dark"] .edo-bubble--bot h3,
+#edo-panel[data-theme="dark"] .edo-bubble--bot h4,
+#edo-panel[data-theme="dark"] .edo-bubble--bot [style*="color:#005f73"] {
+    color: #22d3ee !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   INTRO QUIZ NIVEAU
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] [style*="background:linear-gradient(135deg,#e0f7fa"] {
+    background: linear-gradient(135deg, rgba(34,211,238,0.08), rgba(99,102,241,0.06)) !important;
+    border-color: rgba(34,211,238,0.25) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   SCROLLBAR DARK
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="dark"] .edo-messages::-webkit-scrollbar {
+    width: 4px;
+}
+#edo-panel[data-theme="dark"] .edo-messages::-webkit-scrollbar-track {
+    background: #07090f;
+}
+#edo-panel[data-theme="dark"] .edo-messages::-webkit-scrollbar-thumb {
+    background: rgba(34,211,238,0.18);
+    border-radius: 2px;
+}
+#edo-panel[data-theme="dark"] .edo-messages::-webkit-scrollbar-thumb:hover {
+    background: rgba(34,211,238,0.35);
+}
+/* ════════════════════════════════════════════════════════════════
+   FAB DARK — ambre glowing
+   ════════════════════════════════════════════════════════════════ */
+#edo-fab[data-theme-synced="dark"] {
+    box-shadow: 0 8px 28px rgba(245,158,11,0.45), 0 0 0 3px rgba(245,158,11,0.12) !important;
+}
+/* ════════════════════════════════════════════════════════════════
+   LIGHT MODE — application variables
+   ════════════════════════════════════════════════════════════════ */
+#edo-panel[data-theme="light"] {
+    background: var(--edo-bg) !important;
+    color: var(--edo-text) !important;
+    box-shadow: var(--edo-shadow) !important;
+}
+#edo-panel[data-theme="light"] .edo-messages {
+    background: var(--edo-bg) !important;
+}
+#edo-panel[data-theme="light"] .edo-bubble--bot {
+    background: var(--edo-bubble-bot-bg) !important;
+    border-color: var(--edo-bubble-bot-border) !important;
+    color: var(--edo-text) !important;
+}
+#edo-panel[data-theme="light"] .edo-shortcuts {
+    background: var(--edo-shortcuts-bg) !important;
+}
+#edo-panel[data-theme="light"] .edo-shortcut {
+    background: var(--edo-shortcut-bg) !important;
+    border-color: var(--edo-shortcut-border) !important;
+    color: var(--edo-shortcut-text) !important;
+}
+#edo-panel[data-theme="light"] .edo-input {
+    background: var(--edo-input-bg) !important;
+    border-color: var(--edo-input-border) !important;
+    color: var(--edo-text) !important;
+}
+#edo-panel[data-theme="light"] .edo-input-row {
+    background: var(--edo-input-row-bg) !important;
+    border-top-color: var(--edo-border-light) !important;
+}
+#edo-panel[data-theme="light"] .edo-action-btn {
+    background: var(--edo-action-bg) !important;
+    border-color: var(--edo-action-border) !important;
+}
+#edo-panel[data-theme="light"] .edo-footer {
+    background: var(--edo-footer-bg) !important;
+    border-top-color: var(--edo-footer-border) !important;
+    color: var(--edo-text-muted) !important;
+}
+#edo-panel[data-theme="light"] .edo-send-btn {
+    background: var(--edo-send-bg) !important;
+    box-shadow: var(--edo-send-shadow) !important;
+}
+        `;
+document.head.appendChild(style);
+}
+
+    function applyTheme(theme) {
+        var panel = document.getElementById('edo-panel');
+        if (!panel) return;
+        panel.setAttribute('data-theme', theme);
+        localStorage.setItem(EDO_THEME_KEY, theme);
+
+        // Sync FAB pour ombre orange en dark
+        var fab = document.getElementById('edo-fab');
+        if (fab) fab.setAttribute('data-theme-synced', theme);
+
+        var btn = document.getElementById('edo-theme-toggle');
+        if (btn) {
+            if (theme === 'dark') {
+                btn.innerHTML = SVG_SUN;
+                btn.title = 'Passer en mode clair';
+            } else {
+                btn.innerHTML = SVG_MOON;
+                btn.title = 'Passer en mode sombre';
+            }
+        }
+    }
+
+    function toggleTheme() {
+        var panel = document.getElementById('edo-panel');
+        if (!panel) return;
+        var current = panel.getAttribute('data-theme') || 'light';
+        applyTheme(current === 'dark' ? 'light' : 'dark');
+    }
+
+    function initTheme() {
+        injectThemeStyles();
+        var saved = localStorage.getItem(EDO_THEME_KEY) || 'light';
+        applyTheme(saved);
+    }
+
+    var SVG_TTS_PLAY = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+    var SVG_TTS_STOP = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
+
+    function speakText(text, btn) {
+        if (!window.speechSynthesis) return;
+        if (currentTtsBtn === btn && window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
+            resetTtsBtn(btn);
+            currentTtsBtn = null;
+            return;
+        }
+        if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+            window.speechSynthesis.cancel();
+        }
+        if (currentTtsBtn && currentTtsBtn !== btn) {
+            resetTtsBtn(currentTtsBtn);
+        }
+        var clean = text
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\*\*(.+?)\*\*/g, '$1')
+            .replace(/\*(.+?)\*/g, '$1')
+            .replace(/^#+\s+/gm, '')
+            .replace(/^-\s+/gm, '')
+            .replace(/✅|❌|👋|🎉|👍|💪|🌱|📘|🚀|🎯|😊/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!clean) return;
+        var utterance = new SpeechSynthesisUtterance(clean);
+        utterance.lang = ttsLang;
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        var voices = window.speechSynthesis.getVoices();
+        var match  = voices.find(function(v) { return v.lang === ttsLang; })
+                  || voices.find(function(v) { return v.lang.startsWith(ttsLang.split('-')[0]); });
+        if (match) utterance.voice = match;
+        setTtsBtnActive(btn);
+        currentTtsBtn = btn;
+        utterance.onend = function() { resetTtsBtn(btn); currentTtsBtn = null; };
+        utterance.onerror = function() { resetTtsBtn(btn); currentTtsBtn = null; };
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+    }
+
+    function setTtsBtnActive(btn) {
+        var panel = document.getElementById('edo-panel');
+        var isDark = panel && panel.getAttribute('data-theme') === 'dark';
+        btn.innerHTML = SVG_TTS_STOP + ' Stop';
+        btn.style.color       = isDark ? '#00c8e0' : '#0a9396';
+        btn.style.borderColor = isDark ? '#00c8e0' : '#0a9396';
+        btn.style.background  = isDark ? 'rgba(0,200,224,0.1)' : '#e0f7fa';
+        btn.title = 'Arrêter la lecture';
+    }
+
+    function resetTtsBtn(btn) {
+        btn.innerHTML = SVG_TTS_PLAY + ' Écouter';
+        btn.style.color       = '#6b7280';
+        btn.style.borderColor = '';
+        btn.style.background  = '';
+        btn.title = 'Écouter la réponse';
+    }
+
+    if (window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = function() {
+            window.speechSynthesis.getVoices();
+        };
+    }
+
+    var AVATAR_IMG    = '<img src="' + avatarUrl + '" style="width:150%;height:150%;object-fit:cover;margin:-25%;" alt="Edo">';
     var AVATAR_IMG_SM = '<img src="' + avatarUrl + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover;" alt="Edo">';
 
     var SVG = {
@@ -41,7 +699,8 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         chat:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
         plus:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
         file:    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
-        chevron: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>'
+        chevron: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>',
+        moon:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
     };
 
     function getTime() {
@@ -61,27 +720,19 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
     function renderMarkdown(text) {
         if (!text) return '';
         var html = text
-            // Titres ## et ###
             .replace(/^### (.+)$/gm, '<h4 style="margin:10px 0 4px;font-size:13px;color:#005f73;font-weight:700;">$1</h4>')
             .replace(/^## (.+)$/gm,  '<h3 style="margin:12px 0 5px;font-size:14px;color:#005f73;font-weight:700;">$1</h3>')
             .replace(/^# (.+)$/gm,   '<h2 style="margin:14px 0 6px;font-size:15px;color:#005f73;font-weight:700;">$1</h2>')
-            // Gras **texte**
             .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-            // Italique *texte*
             .replace(/\*(.+?)\*/g, '<em>$1</em>')
-            // Listes - item
             .replace(/^- (.+)$/gm, '<li style="margin:3px 0;padding-left:4px;">$1</li>')
-            // Listes numérotées
             .replace(/^\d+\. (.+)$/gm, '<li style="margin:3px 0;padding-left:4px;">$1</li>')
-            // Entourer les <li> consécutifs
             .replace(/(<li[^>]*>.*<\/li>\n?)+/g, '<ul style="margin:6px 0 6px 16px;padding:0;list-style:disc;">$&</ul>')
-            // Sauts de ligne
             .replace(/\n\n/g, '</p><p style="margin:6px 0;">')
             .replace(/\n/g, '<br>');
         return '<p style="margin:0;">' + html + '</p>';
     }
 
-    // ── Suggestions dynamiques ─────────────────────────────────
     function clearSuggestions() {
         var panel = document.getElementById('edo-panel');
         var existing = panel ? panel.querySelector('.edo-dynamic-suggestions') : null;
@@ -109,7 +760,6 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         panel.insertBefore(container, inputRow);
     }
 
-    // ── Append message ─────────────────────────────────────────
     function appendMessage(text, role, loading) {
         var messages = document.getElementById('edo-messages');
         if (!messages) return null;
@@ -130,12 +780,18 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
 
             var actions = document.createElement('div');
             actions.classList.add('edo-bubble-actions');
+
             var btnCopy    = makeActionBtn(SVG.copy   + ' Copier',    'edo-btn-copy',    '#6b7280');
             var btnRegen   = makeActionBtn(SVG.regen  + ' Régénérer', 'edo-btn-regen',   '#6b7280');
+            var btnTts     = makeActionBtn(SVG_TTS_PLAY + ' Écouter', 'edo-btn-tts',     '#6b7280');
+            btnTts.title   = 'Écouter la réponse';
+            if (!window.speechSynthesis) btnTts.style.display = 'none';
             var btnLike    = makeActionBtn(SVG.like,                   'edo-btn-like',    '#6b7280');
             var btnDislike = makeActionBtn(SVG.dislike,                'edo-btn-dislike', '#6b7280');
+
             actions.appendChild(btnCopy);
             actions.appendChild(btnRegen);
+            actions.appendChild(btnTts);
             actions.appendChild(btnLike);
             actions.appendChild(btnDislike);
 
@@ -146,11 +802,19 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
                     setTimeout(function () { btnCopy.innerHTML = SVG.copy + ' Copier'; btnCopy.style.color = '#6b7280'; }, 2000);
                 });
             });
+
             btnRegen.addEventListener('click', function () {
                 if (!lastQuestion) return;
+                if (window.speechSynthesis) window.speechSynthesis.cancel();
+                if (currentTtsBtn) { resetTtsBtn(currentTtsBtn); currentTtsBtn = null; }
                 actions.remove(); row.remove(); clearSuggestions();
                 sendQuestion(lastQuestion, lastApiUrl, lastCourseId);
             });
+
+            btnTts.addEventListener('click', function () {
+                speakText(text, btnTts);
+            });
+
             btnLike.addEventListener('click', function () {
                 var active = btnLike.classList.toggle('edo-feedback-active');
                 btnLike.style.color = active ? '#22c55e' : '#6b7280';
@@ -159,6 +823,7 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
                 btnDislike.classList.remove('edo-feedback-active');
                 btnDislike.style.color = '#6b7280'; btnDislike.style.borderColor = ''; btnDislike.style.background = '';
             });
+
             btnDislike.addEventListener('click', function () {
                 var active = btnDislike.classList.toggle('edo-feedback-active');
                 btnDislike.style.color = active ? '#ef4444' : '#6b7280';
@@ -205,7 +870,6 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         return btn;
     }
 
-    // ── Séparateur visuel ──────────────────────────────────────
     function addSeparator(label) {
         var messages = document.getElementById('edo-messages');
         if (!messages) return;
@@ -215,7 +879,6 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         messages.appendChild(sep);
     }
 
-    // ── Charger une conversation ───────────────────────────────
     async function loadConversation(convId, apiUrl, courseId) {
         try {
             var resp = await fetch(apiUrl + '/history?conversation_id=' + encodeURIComponent(convId) + '&course_id=' + courseId);
@@ -245,7 +908,6 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         await loadConversation(savedId, apiUrl, courseId);
     }
 
-    // ── Modal suppression ──────────────────────────────────────
     function showDeleteConfirm(convId, firstMsg, wrapper, apiUrl, courseId) {
         var existing = document.getElementById('edo-delete-modal');
         if (existing) existing.remove();
@@ -282,7 +944,6 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         modal.addEventListener('click', function (e) { if (e.target === modal) modal.remove(); });
     }
 
-    // ── Panneau historique ─────────────────────────────────────
     async function buildHistoryPanel(apiUrl, courseId) {
         var existing = document.getElementById('edo-history-panel');
         if (existing) { existing.remove(); return; }
@@ -302,7 +963,6 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
             messages.appendChild(row); hp.remove();
         });
         try {
-
             var resp = await fetch(apiUrl + '/conversations?user_id=' + studentId + '&course_id=' + courseId);
             var data = await resp.json();
             var list = hp.querySelector('#edo-history-list');
@@ -312,7 +972,7 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
                 var isActive = conv.conversation_id === conversationId;
                 var item = document.createElement('button');
                 item.style.cssText = 'width:100%;text-align:left;padding:11px 13px;border-radius:11px;cursor:pointer;border:1.5px solid ' + (isActive ? '#0a9396' : '#e5e7eb') + ';background:' + (isActive ? '#e9f5f2' : '#f9fafb') + ';transition:all 0.15s;display:flex;flex-direction:column;gap:4px;';
-                item.innerHTML = '<div style="font-size:13px;font-weight:500;color:' + (isActive ? '#005f73' : '#111827') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">' + SVG.chat + '&nbsp; ' + (conv.first_message || 'Conversation') + '</div><div style="font-size:11px;color:#9ca3af;display:flex;gap:8px;"><span>' + formatDate(conv.created_at) + '</span><span>·</span><span>' + conv.message_count + ' messages</span>' + (isActive ? '<span style="color:#0a9396;font-weight:600;">· Active</span>' : '') + '</div>';
+                item.innerHTML = '<div style="font-size:13px;font-weight:500;color:' + (isActive ? '#22d3ee' : (document.getElementById('edo-panel').getAttribute('data-theme') === 'dark' ? '#e2e8f5' : '#111827')) + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">' + SVG.chat + '&nbsp; ' + (conv.first_message || 'Conversation') + '</div><div style="font-size:11px;color:' + (document.getElementById('edo-panel').getAttribute('data-theme') === 'dark' ? '#64748b' : '#9ca3af') + ';display:flex;gap:8px;"><span>' + formatDate(conv.created_at) + '</span><span>·</span><span>' + conv.message_count + ' messages</span>' + (isActive ? '<span style="color:#0a9396;font-weight:600;">· Active</span>' : '') + '</div>';
                 item.addEventListener('mouseenter', function () { if (!isActive) { item.style.background='#f0f7f6'; item.style.borderColor='#94d2bd'; } });
                 item.addEventListener('mouseleave', function () { if (!isActive) { item.style.background='#f9fafb'; item.style.borderColor='#e5e7eb'; } });
                 item.addEventListener('click', async function () { hp.remove(); await loadConversation(conv.conversation_id, apiUrl, courseId); });
@@ -330,7 +990,6 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         } catch (e) { var list2 = hp.querySelector('#edo-history-list'); list2.innerHTML = '<div style="text-align:center;color:#ef4444;font-size:13px;padding:20px 0;">Erreur de chargement.</div>'; }
     }
 
-    // ── Extraits de cours (sources RAG) ───────────────────────
     function renderSources(sources, messages) {
         if (!sources || sources.length === 0) return;
         var wrapper = document.createElement('div');
@@ -354,6 +1013,7 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         });
         sources.forEach(function(src, idx) {
             var card = document.createElement('div');
+            card.className = 'edo-src-card';
             card.style.cssText = 'background:#f0f9f9;border:1px solid #94d2bd;border-left:3px solid #0a9396;border-radius:8px;padding:10px 12px;font-size:12px;color:#374151;line-height:1.6;';
             var srcName = src.resource_name ? decodeURIComponent(src.resource_name.replace(/\+/g, ' ').replace(/%20/g, ' ')) : 'Cours';
             srcName = srcName.replace(/\.(pdf|docx?|pptx?|txt)$/i, '');
@@ -374,98 +1034,89 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
     }
 
     function renderJsonQuiz(jsonText, messages) {
-    try {
-        var data = typeof jsonText === 'string' ? JSON.parse(jsonText) : jsonText;
-        var questions = data.questions;
-        if (!questions || questions.length === 0) return false;
-
-        var row = document.createElement('div');
-        row.classList.add('edo-bot-row');
-        var av = document.createElement('div'); av.className = 'edo-bot-avatar'; av.innerHTML = AVATAR_IMG_SM;
-        row.appendChild(av);
-        var container = document.createElement('div');
-        container.style.cssText = 'display:flex;flex-direction:column;gap:14px;max-width:88%;';
-
-        var score = { correct: 0, total: questions.length, answered: 0 };
-
-        questions.forEach(function(q, idx) {
-            var qDiv = document.createElement('div');
-            qDiv.style.cssText = 'background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px 16px;';
-            var qTitle = document.createElement('div');
-            qTitle.style.cssText = 'font-size:13px;font-weight:600;color:#1e293b;margin-bottom:10px;line-height:1.4;';
-            qTitle.textContent = 'Question ' + (idx + 1) + ' : ' + q.question;
-            qDiv.appendChild(qTitle);
-
-            var optContainer = document.createElement('div');
-            optContainer.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
-            var answered = false;
-
-            q.options.forEach(function(opt) {
-                var letter = opt.charAt(0);
-                var btn = document.createElement('button');
-                btn.style.cssText = 'text-align:left;padding:9px 13px;border-radius:8px;border:1.5px solid #e2e8f0;background:#ffffff;font-size:12.5px;color:#374151;cursor:pointer;transition:all 0.15s;width:100%;';
-                btn.innerHTML = '<strong>' + opt + '</strong>';
-                btn.addEventListener('mouseenter', function() { if (!answered) { btn.style.background='#f0f9ff'; btn.style.borderColor='#7dd3fc'; } });
-                btn.addEventListener('mouseleave', function() { if (!answered) { btn.style.background='#ffffff'; btn.style.borderColor='#e2e8f0'; } });
-                btn.addEventListener('click', function() {
-                    if (answered) return;
-                    answered = true; score.answered++;
-                    var isCorrect = (letter === q.answer);
-                    if (isCorrect) score.correct++;
-                    optContainer.querySelectorAll('button').forEach(function(b) {
-                        b.style.cursor = 'default';
-                        var bLetter = b.innerHTML.charAt(8);
-                        if (bLetter === q.answer) { b.style.background='#f0fdf4'; b.style.borderColor='#22c55e'; b.style.color='#15803d'; }
-                        else if (b === btn && !isCorrect) { b.style.background='#fef2f2'; b.style.borderColor='#ef4444'; b.style.color='#dc2626'; }
-                        else { b.style.opacity='0.4'; }
-                    });
-                    var expDiv = document.createElement('div');
-                    expDiv.style.cssText = 'margin-top:10px;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.5;' + (isCorrect ? 'background:#f0fdf4;border:1px solid #86efac;color:#15803d;' : 'background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;');
-                    expDiv.innerHTML = isCorrect ? '✅ <strong>Bonne réponse !</strong> ' + q.explanation : '❌ <strong>Mauvaise réponse.</strong> La bonne réponse est <strong>' + q.answer + '</strong>. ' + q.explanation;
-                    qDiv.appendChild(expDiv);
-                    messages.scrollTop = messages.scrollHeight;
-                    if (score.answered === score.total) {
-                        var pct = Math.round((score.correct / score.total) * 100);
-                        var emoji = pct >= 80 ? '🎉' : pct >= 50 ? '👍' : '💪';
-                        var msg = pct >= 80 ? 'Excellent travail !' : pct >= 50 ? 'Bon effort, continue !' : 'Continue à réviser !';
-                        var scoreDiv = document.createElement('div');
-                        scoreDiv.style.cssText = 'margin-top:6px;padding:14px;border-radius:10px;background:linear-gradient(135deg,#005f73,#0a9396);color:#fff;text-align:center;font-size:14px;';
-                        scoreDiv.innerHTML = emoji + ' <strong>Score : ' + score.correct + '/' + score.total + ' (' + pct + '%)</strong><br><span style="font-size:12px;opacity:0.9;">' + msg + '</span>';
-                        container.appendChild(scoreDiv);
+        try {
+            var data = typeof jsonText === 'string' ? JSON.parse(jsonText) : jsonText;
+            var questions = data.questions;
+            if (!questions || questions.length === 0) return false;
+            var row = document.createElement('div');
+            row.classList.add('edo-bot-row');
+            var av = document.createElement('div'); av.className = 'edo-bot-avatar'; av.innerHTML = AVATAR_IMG_SM;
+            row.appendChild(av);
+            var container = document.createElement('div');
+            container.style.cssText = 'display:flex;flex-direction:column;gap:14px;max-width:88%;';
+            var score = { correct: 0, total: questions.length, answered: 0 };
+            questions.forEach(function(q, idx) {
+                var qDiv = document.createElement('div');
+                qDiv.className = 'edo-quiz-card';
+                qDiv.style.cssText = 'background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px 16px;';
+                var qTitle = document.createElement('div');
+                qTitle.style.cssText = 'font-size:13px;font-weight:600;color:#1e293b;margin-bottom:10px;line-height:1.4;';
+                qTitle.textContent = 'Question ' + (idx + 1) + ' : ' + q.question;
+                qDiv.appendChild(qTitle);
+                var optContainer = document.createElement('div');
+                optContainer.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
+                var answered = false;
+                q.options.forEach(function(opt) {
+                    var letter = opt.charAt(0);
+                    var btn = document.createElement('button');
+                    btn.style.cssText = 'text-align:left;padding:9px 13px;border-radius:8px;border:1.5px solid #e2e8f0;background:#ffffff;font-size:12.5px;color:#374151;cursor:pointer;transition:all 0.15s;width:100%;';
+                    btn.innerHTML = '<strong>' + opt + '</strong>';
+                    btn.addEventListener('mouseenter', function() { if (!answered) { btn.style.background='#f0f9ff'; btn.style.borderColor='#7dd3fc'; } });
+                    btn.addEventListener('mouseleave', function() { if (!answered) { btn.style.background='#ffffff'; btn.style.borderColor='#e2e8f0'; } });
+                    btn.addEventListener('click', function() {
+                        if (answered) return;
+                        answered = true; score.answered++;
+                        var isCorrect = (letter === q.answer);
+                        if (isCorrect) score.correct++;
+                        optContainer.querySelectorAll('button').forEach(function(b) {
+                            b.style.cursor = 'default';
+                            var bLetter = b.innerHTML.charAt(8);
+                            if (bLetter === q.answer) { b.style.background='#f0fdf4'; b.style.borderColor='#22c55e'; b.style.color='#15803d'; }
+                            else if (b === btn && !isCorrect) { b.style.background='#fef2f2'; b.style.borderColor='#ef4444'; b.style.color='#dc2626'; }
+                            else { b.style.opacity='0.4'; }
+                        });
+                        var expDiv = document.createElement('div');
+                        expDiv.style.cssText = 'margin-top:10px;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.5;' + (isCorrect ? 'background:#f0fdf4;border:1px solid #86efac;color:#15803d;' : 'background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;');
+                        expDiv.innerHTML = isCorrect ? '✅ <strong>Bonne réponse !</strong> ' + q.explanation : '❌ <strong>Mauvaise réponse.</strong> La bonne réponse est <strong>' + q.answer + '</strong>. ' + q.explanation;
+                        qDiv.appendChild(expDiv);
                         messages.scrollTop = messages.scrollHeight;
-                    }
+                        if (score.answered === score.total) {
+                            var pct = Math.round((score.correct / score.total) * 100);
+                            var emoji = pct >= 80 ? '🎉' : pct >= 50 ? '👍' : '💪';
+                            var msg = pct >= 80 ? 'Excellent travail !' : pct >= 50 ? 'Bon effort, continue !' : 'Continue à réviser !';
+                            var scoreDiv = document.createElement('div');
+                            scoreDiv.style.cssText = 'margin-top:6px;padding:14px;border-radius:10px;background:linear-gradient(135deg,#005f73,#0a9396);color:#fff;text-align:center;font-size:14px;';
+                            scoreDiv.innerHTML = emoji + ' <strong>Score : ' + score.correct + '/' + score.total + ' (' + pct + '%)</strong><br><span style="font-size:12px;opacity:0.9;">' + msg + '</span>';
+                            container.appendChild(scoreDiv);
+                            messages.scrollTop = messages.scrollHeight;
+                        }
+                    });
+                    optContainer.appendChild(btn);
                 });
-                optContainer.appendChild(btn);
+                qDiv.appendChild(optContainer);
+                container.appendChild(qDiv);
             });
-
-            qDiv.appendChild(optContainer);
-            container.appendChild(qDiv);
-        });
-
-        row.appendChild(container);
-        messages.appendChild(row);
-        messages.scrollTop = messages.scrollHeight;
-        return true;
-    } catch(e) {
-        console.warn('[Edora] renderJsonQuiz erreur:', e);
-        return false;
+            row.appendChild(container);
+            messages.appendChild(row);
+            messages.scrollTop = messages.scrollHeight;
+            return true;
+        } catch(e) {
+            console.warn('[Edora] renderJsonQuiz erreur:', e);
+            return false;
+        }
     }
-}
 
-    // ── Quiz interactif ────────────────────────────────────────
     function renderInteractiveQuiz(text, messages) {
         if (!text.includes('Bonne réponse') && !text.includes('✅')) return false;
         var parts = text.split(/(?=\*\*Question\s+\d+\s*:)/i);
         var blocks = parts.filter(function(b) { return b.trim().match(/^\*\*Question/i); });
         if (blocks.length === 0) return false;
-
         var row = document.createElement('div');
         row.classList.add('edo-bot-row');
         var av = document.createElement('div'); av.className = 'edo-bot-avatar'; av.innerHTML = AVATAR_IMG_SM;
         row.appendChild(av);
         var container = document.createElement('div');
         container.style.cssText = 'display:flex;flex-direction:column;gap:14px;max-width:88%;';
-
         var introText = parts[0] ? parts[0].trim() : '';
         if (introText && !introText.match(/^\*\*Question/i)) {
             var intro = document.createElement('div');
@@ -473,15 +1124,12 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
             intro.textContent = introText.replace(/\*\*/g, '');
             container.appendChild(intro);
         }
-
         var score = { correct: 0, total: blocks.length, answered: 0 };
-
         blocks.forEach(function(block, idx) {
             var lines = block.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
             var qLine = lines[0] || '';
             var qText = qLine.replace(/^\*\*Question\s*\d+\s*:\*?\*?\s*/i, '').replace(/\*\*/g, '').trim();
             var options = []; var seen = {}; var correctLetter = ''; var explanation = '';
-
             lines.forEach(function(line) {
                 var multiMatch = line.match(/([A-D])\)\s+(.+?)(?=\s{2,}[A-D]\)|$)/g);
                 if (multiMatch) {
@@ -496,18 +1144,16 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
                 var ans = line.match(/✅\s*Bonne\s*r[ée]ponse\s*:\s*([A-D])\s*[—\-–]\s*(.+)/i);
                 if (ans) { correctLetter = ans[1]; explanation = ans[2].trim(); }
             });
-
             var qDiv = document.createElement('div');
+            qDiv.className = 'edo-quiz-card';
             qDiv.style.cssText = 'background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px 16px;';
             var qTitle = document.createElement('div');
             qTitle.style.cssText = 'font-size:13px;font-weight:600;color:#1e293b;margin-bottom:10px;line-height:1.4;';
             qTitle.textContent = 'Question ' + (idx + 1) + ' : ' + qText;
             qDiv.appendChild(qTitle);
-
             var optContainer = document.createElement('div');
             optContainer.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
             var answered = false;
-
             options.forEach(function(opt) {
                 var btn = document.createElement('button');
                 btn.style.cssText = 'text-align:left;padding:9px 13px;border-radius:8px;border:1.5px solid #e2e8f0;background:#ffffff;font-size:12.5px;color:#374151;cursor:pointer;transition:all 0.15s;width:100%;';
@@ -545,11 +1191,9 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
                 });
                 optContainer.appendChild(btn);
             });
-
             qDiv.appendChild(optContainer);
             container.appendChild(qDiv);
         });
-
         var ts = document.createElement('div');
         ts.style.cssText = 'font-size:11px;color:#9ca3af;text-align:right;margin-top:2px;';
         ts.textContent = getTime();
@@ -628,15 +1272,12 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         introRow.appendChild(introBubble);
         messages.appendChild(introRow);
         messages.scrollTop = messages.scrollHeight;
-
         var parts = quizText.split(/(?=\*\*Question\s+\d+\s*:)/i);
         var blocks = parts.filter(function(b) { return b.trim().match(/^\*\*Question/i); });
         if (blocks.length === 0) { onComplete(5, 10); return; }
-
         var quizWrapper = document.createElement('div');
         quizWrapper.style.cssText = 'margin:8px 0 8px 44px;max-width:88%;display:flex;flex-direction:column;gap:10px;';
         var score = { correct: 0, total: blocks.length, answered: 0 };
-
         blocks.forEach(function(block, idx) {
             var lines = block.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
             var qLine = lines[0] || '';
@@ -650,6 +1291,7 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
                 if (ans) { correctLetter=ans[1]; explanation=ans[2].trim(); }
             });
             var qCard = document.createElement('div');
+            qCard.className = 'edo-quiz-card';
             qCard.style.cssText = 'background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px 14px;';
             var qHeader = document.createElement('div');
             qHeader.style.cssText = 'font-size:12.5px;font-weight:600;color:#1e293b;margin-bottom:8px;';
@@ -708,7 +1350,6 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         var level = correct <= 4 ? 'debutant' : correct <= 7 ? 'intermediaire' : 'avance';
         var info = levelInfo[level];
         try {
-            // FIX : utiliser studentId variable
             await fetch(apiUrl + '/level-save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -759,16 +1400,18 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
         }
     }
 
-    // ── Send question ──────────────────────────────────────────
     async function sendQuestion(question, apiUrl, courseId) {
         var sendBtn = document.getElementById('edo-send');
         var input   = document.getElementById('edo-input');
         lastQuestion = question; lastApiUrl = apiUrl; lastCourseId = courseId;
         sendBtn.disabled = true; input.disabled = true;
         clearSuggestions();
+        if (window.speechSynthesis && window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
+        }
+        if (currentTtsBtn) { resetTtsBtn(currentTtsBtn); currentTtsBtn = null; }
         appendMessage(question, 'user');
         conversationHistory.push({ role: 'user', content: question });
-
         await checkAndTriggerLevelQuiz(question, apiUrl, courseId, conversationId, async function() {
             var loadingRow = appendMessage('', 'bot', true);
             try {
@@ -794,13 +1437,13 @@ var AVATAR_IMG = '<img src="' + avatarUrl + '" style="width:150%;height:150%;obj
                 }
                 var msgEl = document.getElementById('edo-messages');
                 var isQuiz = false;
-if (data.is_quiz_json === true) {
-    isQuiz = renderJsonQuiz(data.answer, msgEl);
-}
-if (!isQuiz) {
-    isQuiz = renderInteractiveQuiz(data.answer, msgEl);
-}
-if (!isQuiz) appendMessage(data.answer, 'bot');
+                if (data.is_quiz_json === true) {
+                    isQuiz = renderJsonQuiz(data.answer, msgEl);
+                }
+                if (!isQuiz) {
+                    isQuiz = renderInteractiveQuiz(data.answer, msgEl);
+                }
+                if (!isQuiz) appendMessage(data.answer, 'bot');
                 conversationHistory.push({ role: 'assistant', content: data.answer });
                 if (data.sources && data.sources.length > 0 && data.found_in_course) {
                     renderSources(data.sources, msgEl);
@@ -818,7 +1461,6 @@ if (!isQuiz) appendMessage(data.answer, 'bot');
                 sendBtn.disabled = false; input.disabled = false; input.focus();
             }
         });
-
         if (levelQuizPending) {
             sendBtn.disabled = false; input.disabled = false;
         }
@@ -832,20 +1474,35 @@ if (!isQuiz) appendMessage(data.answer, 'bot');
 
         var panel = document.createElement('div');
         panel.id = 'edo-panel'; panel.className = 'edo-panel';
-        panel.innerHTML = '<div class="edo-header"><div class="edo-header__avatar">' + AVATAR_IMG + '</div><div class="edo-header__info"><span class="edo-name">Edora AI Tutor<span class="edo-name-badge">BETA</span></span><span class="edo-subtitle"><span class="edo-dot edo-dot--green"></span>Votre assistant intelligent pour vos cours</span></div><div class="edo-header__actions"><button id="edo-history-btn" class="edo-header__btn" title="Historique des conversations">' + SVG.history + '</button><button id="edo-minimize" class="edo-header__btn" title="Réduire">' + SVG.minimize + '</button><button id="edo-close" class="edo-header__btn" aria-label="Fermer">' + SVG.close + '</button></div></div><div id="edo-messages" class="edo-messages" role="log" aria-live="polite"><div class="edo-bot-row"><div class="edo-bot-avatar">' + AVATAR_IMG_SM + '</div><div class="edo-bubble edo-bubble--bot">Bonjour ! Je suis Edo, votre tuteur IA 👋<br>Posez-moi une question sur le contenu de ce cours.<div class="edo-timestamp">' + getTime() + '</div></div></div></div><div class="edo-shortcuts"><button class="edo-shortcut" data-question="Explique-moi les concepts principaux de ce cours">' + SVG.book + ' Expliquer</button><button class="edo-shortcut" data-question="Génère un quiz de 3 questions QCM sur ce cours">' + SVG.quiz + ' Quiz</button><button class="edo-shortcut" data-question="Donne-moi des exemples concrets tirés de ce cours">' + SVG.bulb + ' Exemple</button><button class="edo-shortcut" data-question="Résume et synthétise le contenu complet de ce cours">' + SVG.list + ' Résumer</button></div><div class="edo-input-row"><button class="edo-input-icon" id="edo-attach" title="Joindre fichier">' + SVG.attach + '</button><input type="file" id="edo-file-input" style="display:none;" accept=".pdf,.doc,.docx,.txt,.pptx"><input type="text" id="edo-input" class="edo-input" placeholder="Posez votre question sur le contenu du cours..." aria-label="Question pour Edo" maxlength="500"/><button class="edo-input-icon" id="edo-vocal" title="Message vocal">' + SVG.mic + '</button><button id="edo-send" class="edo-send-btn" aria-label="Envoyer">' + SVG.send + '</button></div><div class="edo-footer"><span class="edo-footer-icon">' + SVG.shield + '</span><span class="edo-footer-text">Réponses générées à partir du contenu de vos cours. Vérifiez toujours les informations importantes.</span></div>';
+        panel.innerHTML = '<div class="edo-header"><div class="edo-header__avatar">' + AVATAR_IMG + '</div><div class="edo-header__info"><span class="edo-name">Edora AI Tutor<span class="edo-name-badge">BETA</span></span><span class="edo-subtitle"><span class="edo-dot edo-dot--green"></span>Votre assistant intelligent pour vos cours</span></div><div class="edo-header__actions"><button id="edo-history-btn" class="edo-header__btn" title="Historique des conversations">' + SVG.history + '</button><button id="edo-theme-toggle" class="edo-header__btn" title="Passer en mode sombre">' + SVG.moon + '</button><button id="edo-minimize" class="edo-header__btn" title="Réduire">' + SVG.minimize + '</button><button id="edo-close" class="edo-header__btn" aria-label="Fermer">' + SVG.close + '</button></div></div><div id="edo-messages" class="edo-messages" role="log" aria-live="polite"><div class="edo-bot-row"><div class="edo-bot-avatar">' + AVATAR_IMG_SM + '</div><div class="edo-bubble edo-bubble--bot">Bonjour ! Je suis Edo, votre tuteur IA 👋<br>Posez-moi une question sur le contenu de ce cours.<div class="edo-timestamp">' + getTime() + '</div></div></div></div><div class="edo-shortcuts"><button class="edo-shortcut" data-question="Explique-moi les concepts principaux de ce cours">' + SVG.book + ' Expliquer</button><button class="edo-shortcut" data-question="Génère un quiz de 3 questions QCM sur ce cours">' + SVG.quiz + ' Quiz</button><button class="edo-shortcut" data-question="Donne-moi des exemples concrets tirés de ce cours">' + SVG.bulb + ' Exemple</button><button class="edo-shortcut" data-question="Résume et synthétise le contenu complet de ce cours">' + SVG.list + ' Résumer</button></div><div class="edo-input-row"><button class="edo-input-icon" id="edo-attach" title="Joindre fichier">' + SVG.attach + '</button><input type="file" id="edo-file-input" style="display:none;" accept=".pdf,.doc,.docx,.txt,.pptx"><input type="text" id="edo-input" class="edo-input" placeholder="Posez votre question sur le contenu du cours..." aria-label="Question pour Edo" maxlength="500"/><button class="edo-input-icon" id="edo-vocal" title="Message vocal">' + SVG.mic + '</button><button id="edo-send" class="edo-send-btn" aria-label="Envoyer">' + SVG.send + '</button></div><div class="edo-footer"><span class="edo-footer-icon">' + SVG.shield + '</span><span class="edo-footer-text">Réponses générées à partir du contenu de vos cours. Vérifiez toujours les informations importantes.</span></div>';
 
         document.body.appendChild(fab);
         document.body.appendChild(panel);
+
+        initTheme();
+        panel.querySelector('#edo-theme-toggle').addEventListener('click', function () {
+            toggleTheme();
+        });
+
         loadLastConversation(apiUrl, courseId);
         loadStudentLevel(apiUrl, courseId);
 
         fab.addEventListener('click', function () {
             var isOpen = panel.classList.toggle('edo-panel--open');
             fab.classList.toggle('edo-fab--open', isOpen);
+            if (!isOpen && window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+                if (currentTtsBtn) { resetTtsBtn(currentTtsBtn); currentTtsBtn = null; }
+            }
             if (isOpen) setTimeout(function() { panel.querySelector('#edo-input').focus(); }, 300);
         });
         panel.querySelector('#edo-history-btn').addEventListener('click', function () { buildHistoryPanel(apiUrl, courseId); });
-        panel.querySelector('#edo-close').addEventListener('click', function () { panel.classList.remove('edo-panel--open'); fab.classList.remove('edo-fab--open'); });
+        panel.querySelector('#edo-close').addEventListener('click', function () {
+            panel.classList.remove('edo-panel--open');
+            fab.classList.remove('edo-fab--open');
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            if (currentTtsBtn) { resetTtsBtn(currentTtsBtn); currentTtsBtn = null; }
+        });
         panel.querySelector('#edo-minimize').addEventListener('click', function () {
             var els = ['#edo-messages', '.edo-shortcuts', '.edo-footer', '.edo-input-row', '.edo-dynamic-suggestions'];
             var messages = panel.querySelector('#edo-messages');
@@ -891,7 +1548,6 @@ if (!isQuiz) appendMessage(data.answer, 'bot');
         textInput.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } });
     }
 
-    // ── Init ───────────────────────────────────────────────────
     function init() {
         var root = document.getElementById('edo-chat-root');
         if (!root) { console.error('[Edora Chat] #edo-chat-root introuvable.'); return; }

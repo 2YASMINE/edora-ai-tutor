@@ -41,12 +41,15 @@ class block_tutor_ai extends block_base {
         // URL de l'avatar hibou via Moodle
         $avatarurl = $OUTPUT->image_url('edo-avatar', 'block_tutor_ai');
 
-        $this->content->text = '<div id="edo-chat-root"
-            data-course-id="' . (int)$course_id . '"
-            data-student-id="' . $student_id . '"
-            data-api-url="' . $api_url . '"
-            data-avatar-url="' . $avatarurl . '">
-        </div>';
+        $course_lang = $this->page->course->lang ?: 'fr';
+
+$this->content->text = '<div id="edo-chat-root"
+    data-course-id="' . (int)$course_id . '"
+    data-student-id="' . $student_id . '"
+    data-api-url="' . $api_url . '"
+    data-avatar-url="' . $avatarurl . '"
+    data-lang="' . $course_lang . '">
+</div>';
 
         $this->page->requires->css('/blocks/tutor_ai/styles.css');
         $this->page->requires->js('/blocks/tutor_ai/amd/src/chat.js');
