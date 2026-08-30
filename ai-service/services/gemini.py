@@ -95,6 +95,28 @@ DISTRESS_KEYWORDS = [
     "suicide", "me tuer", "mourir", "je veux mourir", "plus envie de vivre",
     "automutilation", "me faire du mal", "je souffre trop", "je n'en peux plus"
 ]
+# ── Mots-clés mode examen ─────────────────────────────────────────────────────
+EXAM_KEYWORDS = [
+    "examen", "exam", "contrôle", "controle", "évaluation", "evaluation",
+    "devoir noté", "devoir note", "ds", "partiel", "bac", "concours",
+    "question d'examen", "sujet d'examen", "copie", "note finale",
+    "coefficient", "rattrappage"
+]
+
+# ── Mots-clés humeur ──────────────────────────────────────────────────────────
+FRUSTRATION_KEYWORDS = [
+    "je comprends rien", "je comprends pas", "c'est nul", "c nul",
+    "impossible", "je donne tout", "j'abandonne", "j'en peux plus",
+    "trop difficile", "trop dur", "je sais pas", "aucune idée",
+    "j'y arrive pas", "c'est trop", "compliqué", "nul en",
+    "je suis perdu", "perdu", "découragé", "inutile"
+]
+
+CONFUSION_KEYWORDS = [
+    "je comprends pas", "pas compris", "c'est quoi", "kesako",
+    "je suis perdu", "confus", "flou", "pas clair", "expliquer autrement",
+    "je vois pas", "pas logique", "bizarre", "strange"
+]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LOGGING USAGE
@@ -365,6 +387,73 @@ du concept demandé, en combinant deux sources complémentaires :
 💡 **Pour mieux comprendre :** [analogie + complément]
 ❓ [Question de vérification]
 """,
+
+"exam": BASE_PERSONA + """
+
+━━━ MODE : EXAMEN DÉTECTÉ ━━━
+L'étudiant semble soumettre une question d'examen ou de devoir noté.
+Tu ne donnes JAMAIS la réponse directement.
+Tu guides uniquement par des questions socratiques et des indices progressifs.
+
+━━━ COMPORTEMENT OBLIGATOIRE ━━━
+1. Signale poliment que tu as détecté une question d'examen
+2. Refuse de donner la réponse directe
+3. Propose des pistes de réflexion
+4. Encourage l'étudiant à chercher par lui-même
+
+━━━ MESSAGE TYPE ━━━
+"Je détecte que c'est peut-être une question d'examen 🎓
+Mon rôle est de t'aider à réfléchir, pas de te donner la réponse.
+Voici quelques pistes pour t'orienter..."
+""",
+
+
+"mood_frustre": BASE_PERSONA + """
+
+━━━ MODE : ÉTUDIANT FRUSTRÉ ━━━
+L'étudiant exprime de la frustration ou du découragement.
+Priorité absolue : l'aspect émotionnel avant le contenu pédagogique.
+
+━━━ COMPORTEMENT OBLIGATOIRE ━━━
+1. Reconnais d'abord l'émotion de l'étudiant avec empathie
+2. Encourage-le chaleureusement
+3. Propose une approche différente, plus simple
+4. Décompose le concept en micro-étapes
+5. Termine par un message d'espoir et de confiance
+
+Message type : "Je sens que tu es un peu bloqué 😊 C'est tout à fait normal !
+Prenons ça autrement, étape par étape..."
+""",
+
+"mood_confus": BASE_PERSONA + """
+
+━━━ MODE : ÉTUDIANT CONFUS ━━━
+L'étudiant exprime de la confusion ou un manque de clarté.
+
+━━━ COMPORTEMENT OBLIGATOIRE ━━━
+1. Rassure l'étudiant — la confusion est une étape normale
+2. Reformule le concept différemment avec une analogie simple
+3. Utilise des exemples très concrets du quotidien
+4. Vérifie la compréhension avec une question simple à la fin
+""",
+"flashcards": BASE_PERSONA + """
+
+━━━ MODE : FLASHCARDS ━━━
+Génère des flashcards pédagogiques basées UNIQUEMENT sur les extraits du cours fournis.
+
+━━━ FORMAT OBLIGATOIRE ━━━
+Réponds UNIQUEMENT avec un JSON valide, sans texte avant ni après, sans backticks.
+Structure exacte :
+
+{"flashcards": [{"question": "...", "reponse": "..."}]}
+
+━━━ RÈGLES ━━━
+- Entre 5 et 10 flashcards
+- Questions courtes et précises
+- Réponses concises (max 2 phrases)
+- Basé UNIQUEMENT sur les extraits du cours
+- Pas de texte en dehors du JSON
+""",
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -384,7 +473,6 @@ TASK_KEYWORDS = {
                   "définis", "definition", "définition", "comment ca marche",
                   "comment ça marche", "kesako", "kézako", "expliquer"],
 }
-
 
 def _normalize(text: str) -> str:
     """
@@ -446,6 +534,27 @@ def check_distress(text: str) -> bool:
     t = text.lower()
     return any(kw in t for kw in DISTRESS_KEYWORDS)
 
+def detect_exam_question(text: str) -> bool:
+    """Détecte si la question ressemble à une question d'examen."""
+    t = text.lower()
+    return any(kw in t for kw in EXAM_KEYWORDS)
+
+def detect_mood(text: str) -> str:
+    """
+    Détecte l'humeur de l'étudiant.
+    Retourne : 'frustre', 'confus', ou 'neutre'
+    """
+    # Messages courts et neutres → pas de détection
+    if len(text.split()) < 3:
+        return "neutre"
+    
+    t = text.lower()
+    
+    if any(kw in t for kw in FRUSTRATION_KEYWORDS):
+        return "frustre"
+    if any(kw in t for kw in CONFUSION_KEYWORDS):
+        return "confus"
+    return "neutre"
 
 def sanitize_input(text: str) -> str:
     """
@@ -821,6 +930,47 @@ def validate_gemini_output(answer: str, task: str) -> dict:
 # ASK GEMINI
 # ══════════════════════════════════════════════════════════════════════════════
 
+
+def generate_flashcards(context_chunks: list) -> dict:
+    """
+    Génère des flashcards depuis les chunks du cours.
+    Retourne {"success": True, "flashcards": [...]} ou {"success": False, "error": "..."}
+    """
+    context = build_context(context_chunks)
+    prompt = f"""Extraits du cours :
+{context}
+
+Génère entre 5 et 10 flashcards basées UNIQUEMENT sur ce cours.
+Respecte exactement le format JSON demandé."""
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                _call_gemini_api,
+                prompt,
+                SYSTEM_PROMPTS["flashcards"],
+                MAX_OUTPUT_TOKENS
+            )
+            response = future.result(timeout=GEMINI_TIMEOUT)
+
+        import json, re
+        raw = response.text.strip()
+        raw = re.sub(r"```(?:json)?", "", raw).strip()
+        match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if match:
+            raw = match.group(0)
+        data = json.loads(raw)
+        if "flashcards" not in data:
+            return {"success": False, "error": "JSON invalide — clé 'flashcards' manquante"}
+        logger.info("Flashcards générées — %d cartes", len(data["flashcards"]))
+        return {"success": True, "flashcards": data["flashcards"]}
+
+    except Exception as e:
+        logger.error("Erreur génération flashcards : %s", str(e))
+        return {"success": False, "error": str(e)}
+
+
+
 def ask_gemini(
     question: str,
     context_chunks: list,
@@ -879,10 +1029,40 @@ def ask_gemini(
             "chunks_used": 0,
             "task_type": "distress"
         }
+        
+        # ── Détection mode examen ─────────────────────────────────────────────────
+    if detect_exam_question(question):
+        logger.info("🎓 Question d'examen détectée — student_id: %s", pseudonymize_id(student_id))
+        return {
+            "success": True,
+            "answer": "Je détecte que c'est peut-être une question d'examen 🎓\n\n"
+                      "Mon rôle est de t'aider à réfléchir plutôt que de te donner la réponse directement. "
+                      "Voici comment je peux t'aider :\n\n"
+                      "💡 Dis-moi ce que tu comprends déjà de cette question.\n"
+                      "📚 Quels concepts du cours pourraient être liés à cette question ?\n"
+                      "🔍 As-tu consulté le cours sur ce sujet ?\n\n"
+                      "Je suis là pour guider ta réflexion, pas pour remplacer ton travail ! 💪",
+            "found_in_course": False,
+            "chunks_used": 0,
+            "task_type": "exam"
+        } 
+        
+         
+            # ── Détection humeur ──────────────────────────────────────
+    mood = detect_mood(question)
 
     # ── Classification ────────────────────────────────────────
     task = task_type or classify_question(question)
-    system_prompt = SYSTEM_PROMPTS.get(task, SYSTEM_PROMPTS["chat"])
+    
+    # ── Sélection system prompt (humeur prioritaire sur tâche) ─
+    if mood == "frustre":
+        logger.info("😤 Frustration détectée — student: %s", pseudonymize_id(student_id))
+        system_prompt = SYSTEM_PROMPTS.get("mood_frustre", SYSTEM_PROMPTS["chat"])
+    elif mood == "confus":
+        logger.info("😕 Confusion détectée — student: %s", pseudonymize_id(student_id))
+        system_prompt = SYSTEM_PROMPTS.get("mood_confus", SYSTEM_PROMPTS["chat"])
+    else:
+        system_prompt = SYSTEM_PROMPTS.get(task, SYSTEM_PROMPTS["chat"])
 
     # ── Injection du niveau étudiant ──────────────────────────
     if student_level and task in ("expliquer", "chat", "exemple"):

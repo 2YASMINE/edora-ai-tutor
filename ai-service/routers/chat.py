@@ -7,7 +7,7 @@ from services.embeddings import get_embedding
 from services.chroma_service import search_similar_chunks
 from services.gemini import (
     ask_gemini, classify_question,
-    generate_level_quiz, classify_level, get_level_system_prompt
+    generate_level_quiz, classify_level, get_level_system_prompt,generate_flashcards 
 )
 from services.history_service import (
     save_message, get_history, get_user_history,
@@ -19,6 +19,8 @@ import numpy as np
 import asyncio
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
 
 
 CACHE_SIMILARITY_THRESHOLD = 0.92  # seuil de similarité
@@ -245,6 +247,31 @@ async def save_level(request: LevelSaveRequest):
         "total":   request.total
     }
 
+class FlashcardsRequest(BaseModel):
+    course_id: int
+    student_id: int = 0
+
+@router.post("/flashcards")
+async def get_flashcards(request: FlashcardsRequest):
+    """Génère des flashcards depuis le contenu du cours."""
+    try:
+        query_embedding = get_embedding("concepts clés définitions résumé du cours")
+        chunks = search_similar_chunks(
+            course_id=request.course_id,
+            query_embedding=query_embedding,
+            n_results=8
+        )
+    except Exception:
+        chunks = []
+
+    if not chunks:
+        raise HTTPException(status_code=404, detail="Aucun contenu disponible pour ce cours.")
+
+    result = generate_flashcards(chunks)
+    if not result["success"]:
+        raise HTTPException(status_code=503, detail="Impossible de générer les flashcards.")
+
+    return {"flashcards": result["flashcards"]}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ENDPOINT : RÉCUPÉRER LE NIVEAU D'UN ÉTUDIANT

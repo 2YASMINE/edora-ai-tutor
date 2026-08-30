@@ -3,14 +3,12 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import chat, resources
+from routers.flashcards import router as flashcards_router
 from dotenv import load_dotenv
-from db.migrations import run_migrations  # ← import
-
-
+from db.migrations import run_migrations
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
-# Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(name)s: %(message)s"
@@ -36,7 +34,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    run_migrations() 
+    run_migrations()
 
 @app.get("/health")
 async def health():
@@ -44,3 +42,4 @@ async def health():
 
 app.include_router(chat.router)
 app.include_router(resources.router)
+app.include_router(flashcards_router)
