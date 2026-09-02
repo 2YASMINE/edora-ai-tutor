@@ -1,4 +1,5 @@
 import os
+import re
 import hashlib
 import logging
 import unicodedata
@@ -38,26 +39,11 @@ MAX_OUTPUT_TOKENS_RESUME = 3072
 NOT_FOUND_PHRASE = "Je n'ai pas trouvé cette information dans le contenu du cours"
 
 # ── Plafond tokens par session ────────────────────────────────────────────────
-SESSION_TOKEN_LIMIT = 50_000   # tokens max par session étudiant
-_session_tokens: dict = {}     # {student_id: total_tokens_utilisés}
+SESSION_TOKEN_LIMIT = 50_000
+_session_tokens: dict = {}
 
 
 def check_token_budget(student_id: int, tokens_used: int) -> bool:
-    """
-    Vérifie si l'étudiant n'a pas dépassé le plafond de tokens par session.
-
-    Cumule les tokens utilisés dans le dictionnaire en mémoire `_session_tokens`.
-    Si le cumul dépasse SESSION_TOKEN_LIMIT (50 000), logue un warning et retourne False
-    sans mettre à jour le compteur.
-
-    Args:
-        student_id: Identifiant de l'étudiant (utilisé comme clé, pseudonymisé dans les logs).
-        tokens_used: Nombre de tokens (in + out) consommés pour la requête courante.
-
-    Returns:
-        True si le budget n'est pas dépassé (compteur mis à jour).
-        False si le plafond est atteint ou dépassé (compteur inchangé).
-    """
     current = _session_tokens.get(student_id, 0)
     if current + tokens_used > SESSION_TOKEN_LIMIT:
         logger.warning(
@@ -75,18 +61,6 @@ def check_token_budget(student_id: int, tokens_used: int) -> bool:
 
 # ── Pseudonymisation RGPD ─────────────────────────────────────────────────────
 def pseudonymize_id(user_id: int) -> str:
-    """
-    Retourne un hash SHA-256 tronqué à 16 caractères de l'identifiant utilisateur.
-
-    Utilisé pour pseudonymiser les logs conformément au RGPD :
-    le vrai user_id n'est jamais transmis à l'API Gemini ni écrit en clair dans les logs.
-
-    Args:
-        user_id: Identifiant numérique de l'étudiant.
-
-    Returns:
-        Chaîne hexadécimale de 16 caractères (ex. "a3f2c1d0e4b5f6a7").
-    """
     return hashlib.sha256(str(user_id).encode()).hexdigest()[:16]
 
 
@@ -95,52 +69,41 @@ DISTRESS_KEYWORDS = [
     "suicide", "me tuer", "mourir", "je veux mourir", "plus envie de vivre",
     "automutilation", "me faire du mal", "je souffre trop", "je n'en peux plus"
 ]
-# ── Mots-clés mode examen ─────────────────────────────────────────────────────
-EXAM_KEYWORDS = [
-    "examen", "exam", "contrôle", "controle", "évaluation", "evaluation",
-    "devoir noté", "devoir note", "ds", "partiel", "bac", "concours",
-    "question d'examen", "sujet d'examen", "copie", "note finale",
-    "coefficient", "rattrappage"
-]
 
-# ── Mots-clés humeur ──────────────────────────────────────────────────────────
+# ── Mots-clés mode examen — VERSION CORRIGÉE v2 ───────────────────────────────
+# Règle : mots courts (ds, bac) → détection mot entier via \b uniquement
+# "ds" ne doit PAS matcher dans "comprends", "partiel" seul ne suffit pas
+
+# ── Mots-clés humeur — VERSION CORRIGÉE v2 ───────────────────────────────────
+# Phrases complètes uniquement — évite les faux positifs sur mots courts
 FRUSTRATION_KEYWORDS = [
-    "je comprends rien", "je comprends pas", "c'est nul", "c nul",
-    "impossible", "je donne tout", "j'abandonne", "j'en peux plus",
-    "trop difficile", "trop dur", "je sais pas", "aucune idée",
-    "j'y arrive pas", "c'est trop", "compliqué", "nul en",
-    "je suis perdu", "perdu", "découragé", "inutile"
+    "je comprends rien", "je comprends pas", "je ny arrive pas",
+    "jy arrive pas", "jen peux plus", "jabandonne",
+    "je donne tout", "trop difficile", "trop dur",
+    "cest nul", "c nul", "cest trop", "je suis nul",
+    "je suis perdu", "completement perdu", "vraiment nul",
+    "rien compris", "pas du tout compris",
+    "decourage", "desespere", "impossible a comprendre",
+    "je narrive pas", "jarrive pas", "ya rien a faire",
 ]
 
 CONFUSION_KEYWORDS = [
-    "je comprends pas", "pas compris", "c'est quoi", "kesako",
-    "je suis perdu", "confus", "flou", "pas clair", "expliquer autrement",
-    "je vois pas", "pas logique", "bizarre", "strange"
+    "je suis perdu", "pas clair du tout", "pas compris du tout",
+    "je vois pas le rapport", "pas logique du tout",
+    "expliquer autrement", "expliquer differemment",
+    "cest quoi exactement", "cest quoi vraiment",
+    "je comprends pas la difference", "je comprends pas le lien",
+    "kesako", "cest flou", "vraiment confus",
+    "perdu dans", "perdu sur",
 ]
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LOGGING USAGE
 # ══════════════════════════════════════════════════════════════════════════════
 
-
 def _log_usage(student_id: int, course_id: int, task_type: str,
                tokens_in: int, tokens_out: int, cost_usd: float):
-    """
-    Insère une ligne de suivi de consommation dans la table MariaDB `edora_usage_logs`.
-
-    Ouvre une connexion pymysql, insère les données, commite et ferme la connexion.
-    En cas d'erreur (DB indisponible, contrainte, etc.), logue l'erreur sans lever
-    d'exception pour ne pas bloquer la réponse à l'étudiant.
-
-    Args:
-        student_id:  Identifiant de l'étudiant (stocké tel quel en DB, hors logs externes).
-        course_id:   Identifiant du cours Moodle.
-        task_type:   Type de tâche Gemini ("chat", "quiz", "resume", "exemple", "expliquer").
-        tokens_in:   Nombre de tokens du prompt (prompt_token_count).
-        tokens_out:  Nombre de tokens de la réponse (candidates_token_count).
-        cost_usd:    Coût estimé en dollars selon la grille Gemini Flash
-                     (0.075 $/M tokens in, 0.30 $/M tokens out).
-    """
     try:
         conn = pymysql.connect(
             host=os.getenv("MYSQL_HOST", "localhost"),
@@ -388,7 +351,7 @@ du concept demandé, en combinant deux sources complémentaires :
 ❓ [Question de vérification]
 """,
 
-"exam": BASE_PERSONA + """
+    "exam": BASE_PERSONA + """
 
 ━━━ MODE : EXAMEN DÉTECTÉ ━━━
 L'étudiant semble soumettre une question d'examen ou de devoir noté.
@@ -407,8 +370,7 @@ Mon rôle est de t'aider à réfléchir, pas de te donner la réponse.
 Voici quelques pistes pour t'orienter..."
 """,
 
-
-"mood_frustre": BASE_PERSONA + """
+    "mood_frustre": BASE_PERSONA + """
 
 ━━━ MODE : ÉTUDIANT FRUSTRÉ ━━━
 L'étudiant exprime de la frustration ou du découragement.
@@ -425,7 +387,7 @@ Message type : "Je sens que tu es un peu bloqué 😊 C'est tout à fait normal 
 Prenons ça autrement, étape par étape..."
 """,
 
-"mood_confus": BASE_PERSONA + """
+    "mood_confus": BASE_PERSONA + """
 
 ━━━ MODE : ÉTUDIANT CONFUS ━━━
 L'étudiant exprime de la confusion ou un manque de clarté.
@@ -436,7 +398,8 @@ L'étudiant exprime de la confusion ou un manque de clarté.
 3. Utilise des exemples très concrets du quotidien
 4. Vérifie la compréhension avec une question simple à la fin
 """,
-"flashcards": BASE_PERSONA + """
+
+    "flashcards": BASE_PERSONA + """
 
 ━━━ MODE : FLASHCARDS ━━━
 Génère des flashcards pédagogiques basées UNIQUEMENT sur les extraits du cours fournis.
@@ -475,16 +438,6 @@ TASK_KEYWORDS = {
 }
 
 def _normalize(text: str) -> str:
-    """
-    Normalise une chaîne pour la comparaison de mots-clés :
-    supprime les accents (décomposition NFD + filtre Mn), met en minuscules et strip.
-
-    Args:
-        text: Texte brut à normaliser.
-
-    Returns:
-        Texte sans accents, en minuscules, sans espaces en tête/queue.
-    """
     return ''.join(
         c for c in unicodedata.normalize('NFD', text)
         if unicodedata.category(c) != 'Mn'
@@ -492,19 +445,6 @@ def _normalize(text: str) -> str:
 
 
 def classify_question(question: str) -> str:
-    """
-    Détermine le type de tâche pédagogique correspondant à la question de l'étudiant.
-
-    Parcourt TASK_KEYWORDS dans l'ordre (quiz → resume → exemple → expliquer).
-    La comparaison est faite après normalisation des deux côtés (accents supprimés,
-    minuscules). Retourne "chat" par défaut si aucun mot-clé ne correspond.
-
-    Args:
-        question: Question brute de l'étudiant (non tronquée à ce stade).
-
-    Returns:
-        Une des valeurs : "quiz", "resume", "exemple", "expliquer", "chat".
-    """
     q_norm = _normalize(question)
     for task, keywords in TASK_KEYWORDS.items():
         if any(_normalize(kw) in q_norm for kw in keywords):
@@ -515,60 +455,110 @@ def classify_question(question: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SÉCURITÉ
+# SÉCURITÉ & DÉTECTION
 # ══════════════════════════════════════════════════════════════════════════════
 
 def check_distress(text: str) -> bool:
-    """
-    Détecte si le message de l'étudiant contient un mot-clé de détresse psychologique.
-
-    Comparaison insensible à la casse via `text.lower()`.
-    Liste définie dans DISTRESS_KEYWORDS (suicide, automutilation, etc.).
-
-    Args:
-        text: Message brut de l'étudiant.
-
-    Returns:
-        True si au moins un mot-clé de détresse est détecté, False sinon.
-    """
     t = text.lower()
     return any(kw in t for kw in DISTRESS_KEYWORDS)
 
+
 def detect_exam_question(text: str) -> bool:
-    """Détecte si la question ressemble à une question d'examen."""
-    t = text.lower()
-    return any(kw in t for kw in EXAM_KEYWORDS)
+    """
+    Détecte si la question ressemble à une question d'examen.
+    VERSION CORRIGÉE v2 — évite les faux positifs sur sous-mots (ex: "comprends" ≠ "ds")
+    """
+    # Ignorer messages trop courts (moins de 4 mots)
+    if len(text.split()) < 4:
+        return False
+
+    t_norm = ''.join(
+        c for c in unicodedata.normalize('NFD', text.lower())
+        if unicodedata.category(c) != 'Mn'
+    )
+
+    # Mots longs → sous-chaîne normale (pas de risque de faux positif)
+    for kw in [
+        "examen", "evaluation", "evaluer",
+        "devoir note", "note finale", "coefficient",
+        "rattrappage", "question d examen", "sujet d examen",
+        "controle note",
+    ]:
+        if kw in t_norm:
+            return True
+
+    # Mots courts → mot entier uniquement via \b (évite "comprends" → "ds")
+    for pattern in [
+        r"\bds\b",
+        r"\bbac\b",
+        r"\bpartiel\b",
+        r"\bconcours\b",
+    ]:
+        if re.search(pattern, t_norm):
+            return True
+
+    # Phrases très spécifiques indiquant une demande de triche
+    for phrase in [
+        "donne moi la reponse",
+        "donne-moi la reponse",
+        "resous cet exercice",
+        "fais cet exercice pour moi",
+        "reponds a ma place",
+        "fais le devoir",
+        "copie d examen",
+    ]:
+        if phrase in t_norm:
+            return True
+
+    return False
+
 
 def detect_mood(text: str) -> str:
     """
     Détecte l'humeur de l'étudiant.
     Retourne : 'frustre', 'confus', ou 'neutre'
     """
-    # Messages courts et neutres → pas de détection
-    if len(text.split()) < 3:
+    # Ignorer messages trop courts
+    if len(text.split()) < 4:
         return "neutre"
-    
-    t = text.lower()
-    
-    if any(kw in t for kw in FRUSTRATION_KEYWORDS):
+
+    # Normaliser les accents pour comparaison robuste
+    t_norm = ''.join(
+        c for c in unicodedata.normalize('NFD', text.lower())
+        if unicodedata.category(c) != 'Mn'
+    )
+
+    # Frustration — phrases complètes normalisées (pas de mots isolés courts)
+    FRUSTRATION_NORMALIZED = [
+        "je comprends rien", "je comprends pas", "je ny arrive pas",
+        "jy arrive pas", "jen peux plus", "jabandonne",
+        "je donne tout", "trop difficile", "trop dur",
+        "cest nul", "c nul", "cest trop", "je suis nul",
+        "je suis perdu", "completement perdu", "vraiment nul",
+        "rien compris", "pas du tout compris",
+        "decourage", "desespere", "impossible a comprendre",
+        "je narrive pas", "jarrive pas", "ya rien a faire",
+    ]
+
+    # Confusion — phrases complètes normalisées
+    CONFUSION_NORMALIZED = [
+        "je suis perdu", "pas clair du tout", "pas compris du tout",
+        "je vois pas le rapport", "pas logique du tout",
+        "expliquer autrement", "expliquer differemment",
+        "cest quoi exactement", "cest quoi vraiment",
+        "je comprends pas la difference", "je comprends pas le lien",
+        "kesako", "cest flou", "vraiment confus",
+        "perdu dans", "perdu sur",
+    ]
+
+    if any(kw in t_norm for kw in FRUSTRATION_NORMALIZED):
         return "frustre"
-    if any(kw in t for kw in CONFUSION_KEYWORDS):
+    if any(kw in t_norm for kw in CONFUSION_NORMALIZED):
         return "confus"
     return "neutre"
 
+
 def sanitize_input(text: str) -> str:
-    """
-    Tronque l'entrée utilisateur à MAX_INPUT_CHARS (500) caractères.
-
-    Première ligne de défense contre les prompts trop longs avant
-    tout traitement ou appel à l'API Gemini.
-
-    Args:
-        text: Texte brut saisi par l'étudiant.
-
-    Returns:
-        Les MAX_INPUT_CHARS premiers caractères du texte.
-    """
     return text[:MAX_INPUT_CHARS]
 
 
@@ -577,20 +567,6 @@ def sanitize_input(text: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_context(context_chunks: list) -> str:
-    """
-    Formate les chunks RAG en blocs XML pour l'injection dans le prompt Gemini.
-
-    Chaque chunk est encadré dans une balise `<chunk_cours id='N' source='...'>`.
-    La source est lue depuis `chunk["metadata"]["source"]`, avec "cours" comme fallback.
-    Retourne un message d'absence de contenu si la liste est vide.
-
-    Args:
-        context_chunks: Liste de dicts {"text": str, "metadata": dict} issus de ChromaDB.
-
-    Returns:
-        Chaîne XML multi-blocs prête à être injectée dans le prompt,
-        ou "Aucun contenu de cours disponible pour cette question."
-    """
     if not context_chunks:
         return "Aucun contenu de cours disponible pour cette question."
     parts = []
@@ -605,19 +581,6 @@ def build_context(context_chunks: list) -> str:
 
 
 def build_history(conversation_history: list) -> str:
-    """
-    Formate les N derniers messages de l'historique pour injection dans le prompt.
-
-    Conserve uniquement les HISTORY_WINDOW (6) derniers messages.
-    Les rôles "user" et "assistant" sont traduits en "Étudiant" et "Edo".
-
-    Args:
-        conversation_history: Liste de dicts {"role": str, "content": str}.
-
-    Returns:
-        Bloc texte préfixé par "Historique récent :" avec un message par ligne,
-        ou chaîne vide si l'historique est vide.
-    """
     if not conversation_history:
         return ""
     lines = []
@@ -628,20 +591,6 @@ def build_history(conversation_history: list) -> str:
 
 
 def build_prompt(question: str, context_chunks: list, conversation_history: list = None) -> str:
-    """
-    Assemble le prompt final envoyé à Gemini en combinant contexte, historique et question.
-
-    Structure : balise <contexte_cours> → historique récent → balise <question_etudiant>
-    → instruction de mode. La question est tronquée à 500 caractères en sécurité.
-
-    Args:
-        question:             Question de l'étudiant (sera re-tronquée à 500 chars).
-        context_chunks:       Chunks RAG formatés via build_context.
-        conversation_history: Historique optionnel formaté via build_history.
-
-    Returns:
-        Prompt complet prêt à être passé à l'API Gemini.
-    """
     context = build_context(context_chunks)
     history = build_history(conversation_history or [])
     question_safe = question[:500]
@@ -723,33 +672,10 @@ Adapte TOUTES tes explications :
 
 
 def get_level_system_prompt(level: str) -> str:
-    """
-    Retourne le bloc d'instructions de niveau à injecter dans le system prompt Gemini.
-
-    Args:
-        level: Niveau détecté de l'étudiant ("debutant", "intermediaire", "avance").
-
-    Returns:
-        Bloc texte de consignes pédagogiques adaptées au niveau,
-        ou chaîne vide si le niveau n'est pas reconnu.
-    """
     return LEVEL_PROMPTS.get(level, "")
 
 
 def classify_level(score: int, total: int = 10) -> str:
-    """
-    Convertit un score de quiz en niveau pédagogique.
-
-    Seuils : ≤ 40 % → "debutant", ≤ 70 % → "intermediaire", > 70 % → "avance".
-    Retourne "intermediaire" si total vaut 0 (protection division par zéro).
-
-    Args:
-        score: Nombre de bonnes réponses obtenues par l'étudiant.
-        total: Nombre total de questions du quiz (défaut : 10).
-
-    Returns:
-        Une des valeurs : "debutant", "intermediaire", "avance".
-    """
     if total == 0:
         return "intermediaire"
     pct = score / total
@@ -766,21 +692,6 @@ def classify_level(score: int, total: int = 10) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _call_gemini_api_quiz(prompt: str, system_prompt: str) -> str:
-    """
-    Appel Gemini dédié à la génération du quiz de niveau (sans décorateur retry).
-
-    Utilise MAX_OUTPUT_TOKENS_QUIZ (6144) et temperature 0.3.
-
-    Args:
-        prompt:        Prompt complet avec les extraits de cours.
-        system_prompt: System prompt LEVEL_QUIZ_SYSTEM_PROMPT.
-
-    Returns:
-        Texte Markdown du quiz généré par Gemini.
-
-    Raises:
-        Exception: Toute exception Gemini est propagée à l'appelant.
-    """
     response = client.models.generate_content(
         model="gemini-3.5-flash",
         contents=prompt,
@@ -801,24 +712,6 @@ def _call_gemini_api_quiz(prompt: str, system_prompt: str) -> str:
     reraise=True
 )
 def _call_gemini_api(prompt: str, system_prompt: str, max_tokens: int = MAX_OUTPUT_TOKENS):
-    """
-    Appel Gemini principal avec retry et backoff exponentiel via tenacity.
-
-    Configuré avec 4 tentatives max, attente entre 4 s et 60 s (multiplier=1).
-    Logue un warning avant chaque nouvelle tentative. `reraise=True` propage
-    l'exception finale si toutes les tentatives échouent.
-
-    Args:
-        prompt:        Prompt complet assemblé par build_prompt.
-        system_prompt: System prompt sélectionné selon le type de tâche.
-        max_tokens:    Limite de tokens en sortie (défaut MAX_OUTPUT_TOKENS = 2048).
-
-    Returns:
-        Objet response Gemini complet (response.text, response.usage_metadata, etc.).
-
-    Raises:
-        Exception: Toute exception Gemini après épuisement des tentatives.
-    """
     response = client.models.generate_content(
         model="gemini-3.5-flash",
         contents=prompt,
@@ -832,19 +725,6 @@ def _call_gemini_api(prompt: str, system_prompt: str, max_tokens: int = MAX_OUTP
 
 
 def generate_level_quiz(context_chunks: list) -> dict:
-    """
-    Génère un quiz de 10 questions QCM pour détecter le niveau de l'étudiant.
-
-    Construit le contexte RAG via build_context, appelle _call_gemini_api_quiz
-    dans un ThreadPoolExecutor avec timeout GEMINI_TIMEOUT.
-
-    Args:
-        context_chunks: Liste de chunks RAG issus de ChromaDB (idéalement 8).
-
-    Returns:
-        {"success": True,  "quiz": "<texte Markdown du quiz>"}
-        {"success": False, "quiz": "", "error": "<message d'erreur>"}
-    """
     context = build_context(context_chunks)
     prompt = f"""Extraits du cours :
 {context}
@@ -869,23 +749,6 @@ pour évaluer le niveau de l'étudiant. Respecte exactement le format demandé."
 # ══════════════════════════════════════════════════════════════════════════════
 
 def validate_gemini_output(answer: str, task: str) -> dict:
-    """
-    Valide et assainit la sortie Gemini avant de la retourner au client.
-
-    Contrôles effectués dans l'ordre :
-    1. Longueur minimale (< 10 chars → invalide).
-    2. Troncature si dépassement des limites par tâche (quiz 8000, resume 6000, etc.).
-    3. Pour task="quiz" : tentative de parsing JSON et vérification de la clé "questions".
-    4. Détection de patterns d'injection de prompt dans la sortie.
-
-    Args:
-        answer: Texte brut retourné par Gemini.
-        task:   Type de tâche ("chat", "quiz", "resume", "exemple", "expliquer").
-
-    Returns:
-        {"valid": True,  "answer": "<texte potentiellement tronqué>"}
-        {"valid": False, "reason": "<raison de l'invalidité>"}
-    """
     if len(answer.strip()) < 10:
         return {"valid": False, "reason": "Réponse trop courte"}
 
@@ -927,9 +790,8 @@ def validate_gemini_output(answer: str, task: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ASK GEMINI
+# FLASHCARDS
 # ══════════════════════════════════════════════════════════════════════════════
-
 
 def generate_flashcards(context_chunks: list) -> dict:
     """
@@ -953,7 +815,7 @@ Respecte exactement le format JSON demandé."""
             )
             response = future.result(timeout=GEMINI_TIMEOUT)
 
-        import json, re
+        import json
         raw = response.text.strip()
         raw = re.sub(r"```(?:json)?", "", raw).strip()
         match = re.search(r'\{.*\}', raw, re.DOTALL)
@@ -970,6 +832,9 @@ Respecte exactement le format JSON demandé."""
         return {"success": False, "error": str(e)}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ASK GEMINI
+# ══════════════════════════════════════════════════════════════════════════════
 
 def ask_gemini(
     question: str,
@@ -980,43 +845,10 @@ def ask_gemini(
     task_type: str = None,
     student_level: str = None,
 ) -> dict:
-    """
-    Point d'entrée principal pour interroger Gemini dans le contexte pédagogique Edora.
-
-    Pipeline complet :
-    1. Sanitisation de l'entrée (tronquée à 500 chars).
-    2. Détection de détresse → réponse de sécurité immédiate sans appel Gemini.
-    3. Classification de la tâche (task_type fourni ou détecté via classify_question).
-    4. Sélection du system prompt + injection du niveau étudiant si applicable.
-    5. Construction du prompt via build_prompt.
-    6. Appel Gemini via ThreadPoolExecutor avec timeout GEMINI_TIMEOUT.
-    7. Validation de la sortie via validate_gemini_output.
-    8. Logging des tokens et du coût dans edora_usage_logs.
-    9. Vérification du plafond de session (SESSION_TOKEN_LIMIT).
-
-    Args:
-        question:             Question de l'étudiant (brute, sera sanitisée).
-        context_chunks:       Chunks RAG issus de ChromaDB.
-        conversation_history: Historique récent de la conversation (dicts role/content).
-        student_id:           ID étudiant Moodle (pseudonymisé dans les logs).
-        course_id:            ID du cours Moodle.
-        task_type:            Type de tâche forcé (None = détection automatique).
-        student_level:        Niveau détecté ("debutant", "intermediaire", "avance" ou None).
-
-    Returns:
-        {
-            "success":        bool,
-            "answer":         str,
-            "found_in_course": bool,
-            "chunks_used":    int,
-            "task_type":      str   # présent si succès
-        }
-        En cas d'échec, "success" est False et "error" contient le message d'erreur.
-    """
     # ── Sécurité entrée ───────────────────────────────────────
     question = sanitize_input(question)
 
-    # ── Détection détresse ────────────────────────────────────
+    # ── Détection détresse — PRIORITÉ 1 ──────────────────────
     if check_distress(question):
         logger.warning("⚠️  Signal de détresse détecté — student: %s", pseudonymize_id(student_id))
         return {
@@ -1029,10 +861,21 @@ def ask_gemini(
             "chunks_used": 0,
             "task_type": "distress"
         }
-        
-        # ── Détection mode examen ─────────────────────────────────────────────────
-    if detect_exam_question(question):
+
+    # ── Détection humeur — PRIORITÉ 2 (avant exam) ───────────
+    # La détection humeur passe AVANT exam pour éviter qu'un étudiant frustré
+    # soit traité comme un tricheur potentiel
+    mood = detect_mood(question)
+
+    # ── Détection mode examen — PRIORITÉ 3 ───────────────────
+    # Seulement si l'étudiant n'est pas frustré/confus
+    if mood == "neutre" and detect_exam_question(question):
         logger.info("🎓 Question d'examen détectée — student_id: %s", pseudonymize_id(student_id))
+        # Log dans edora_usage_logs
+        try:
+            _log_usage(student_id, course_id, "exam_detected", 0, 0, 0.0)
+        except Exception:
+            pass
         return {
             "success": True,
             "answer": "Je détecte que c'est peut-être une question d'examen 🎓\n\n"
@@ -1045,15 +888,11 @@ def ask_gemini(
             "found_in_course": False,
             "chunks_used": 0,
             "task_type": "exam"
-        } 
-        
-         
-            # ── Détection humeur ──────────────────────────────────────
-    mood = detect_mood(question)
+        }
 
     # ── Classification ────────────────────────────────────────
     task = task_type or classify_question(question)
-    
+
     # ── Sélection system prompt (humeur prioritaire sur tâche) ─
     if mood == "frustre":
         logger.info("😤 Frustration détectée — student: %s", pseudonymize_id(student_id))
@@ -1071,11 +910,11 @@ def ask_gemini(
             system_prompt = system_prompt + level_addon
             logger.info("Niveau injecté dans le prompt — level: %s", student_level)
 
-    # ── Log pseudonymisé (jamais le vrai user_id) ─────────────
+    # ── Log pseudonymisé ──────────────────────────────────────
     pseudo = pseudonymize_id(student_id)
     logger.info(
-        "Appel Gemini — task: %s | level: %s | student: %s | chunks: %d | historique: %d",
-        task, student_level or "non détecté", pseudo,
+        "Appel Gemini — task: %s | mood: %s | level: %s | student: %s | chunks: %d | historique: %d",
+        task, mood, student_level or "non détecté", pseudo,
         len(context_chunks), len(conversation_history or [])
     )
 
