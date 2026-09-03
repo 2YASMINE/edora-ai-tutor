@@ -11,6 +11,10 @@
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/adminlib.php');
 
+// FIX : set_context AVANT require_login() pour éviter "$PAGE->context was not set"
+$PAGE->set_context(context_system::instance());
+$PAGE->set_url(new moodle_url('/blocks/tutor_ai/dashboard.php'));
+
 // ── Sécurité : dashboard strictement enseignant ──────────────────────────────
 require_login();
 
@@ -19,23 +23,58 @@ if (is_siteadmin()) {
     redirect(new moodle_url('/blocks/tutor_ai/admin_dashboard.php'));
 }
 
-// Récupérer uniquement les cours dans lesquels l'utilisateur a réellement
-// la capacité d'enseigner / gérer les activités.
+// Récupérer les cours où l'utilisateur a la capacité d'enseigner.
+// FIX : récupération des cours enseignant par requête directe sur role_assignments.
+// get_user_capability_course() retourne false si la capacité n'est pas explicitement
+// dans la définition du rôle Moodle (override manquant) — la requête directe
+// se base sur le rôle shortname, plus fiable dans notre contexte.
+global $DB;
+
 $teacher_courses = [];
-foreach (enrol_get_users_courses($USER->id, true) as $course) {
-    $ctx = context_course::instance($course->id);
-    if (has_capability('moodle/course:manageactivities', $ctx)) {
+$teacher_role_names = ['editingteacher', 'teacher'];
+
+// Récupérer les IDs de rôles enseignant
+$role_ids = $DB->get_records_list('role', 'shortname', $teacher_role_names, '', 'id');
+
+if (!empty($role_ids)) {
+    $role_id_list = array_keys($role_ids);
+    list($rolesql, $roleparams) = $DB->get_in_or_equal($role_id_list, SQL_PARAMS_NAMED, 'r');
+
+    // Chercher les cours (contextlevel=50) où l'utilisateur a ce rôle
+    $sql = "
+        SELECT c.id, c.fullname, c.shortname
+          FROM {course} c
+          JOIN {context} ctx ON ctx.instanceid = c.id AND ctx.contextlevel = 50
+          JOIN {role_assignments} ra ON ra.contextid = ctx.id
+         WHERE ra.userid = :userid
+           AND ra.roleid $rolesql
+           AND c.id > :siteid
+           AND c.visible = 1
+      ORDER BY c.fullname
+    ";
+    $params = array_merge(['userid' => $USER->id, 'siteid' => SITEID], $roleparams);
+
+    $rows = $DB->get_records_sql($sql, $params);
+    foreach ($rows as $course) {
         $teacher_courses[$course->id] = $course;
     }
 }
 
 if (empty($teacher_courses)) {
-    redirect(new moodle_url('/'), get_string('nopermissions', 'error'));
+    // Pas de cours enseignant trouvé — afficher message clair plutôt que redirect
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Edora</title>
+    <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f0f4f8;}
+    .msg{text-align:center;color:#64748b;}.ico{font-size:48px;margin-bottom:16px;}</style></head><body>
+    <div class="msg"><div class="ico">🦉</div>
+    <h3 style="color:#005f73;">Aucun cours enseignant trouvé</h3>
+    <p>Vous n\'êtes pas assigné comme enseignant dans un cours actif.<br>
+    Contactez l\'administrateur Moodle pour vérifier votre rôle.</p></div>
+    </body></html>';
+    exit;
 }
 
-// ── Page setup ────────────────────────────────────────────────────────────────
-$PAGE->set_url(new moodle_url('/blocks/tutor_ai/dashboard.php'));
-$PAGE->set_context(context_system::instance());
+// ── Page setup (set_url et set_context déjà appelés plus haut) ───────────────
 $PAGE->set_title('Edora — Dashboard Enseignant');
 $PAGE->set_heading('Edora AI Tutor — Tableau de bord enseignant');
 $PAGE->set_pagelayout('embedded');
@@ -223,8 +262,12 @@ for ($j = 2; $j <= 7; $j++) {
 $activite_labels[] = $jours_fr[1];
 $activite_values[] = $activite_map[1] ?? 0;
 
-$teacher_avatar = $OUTPUT->image_url('edo_teacher_avatar', 'block_tutor_ai');
-echo $OUTPUT->header();
+// FIX : URL statique — évite de déclencher le renderer Moodle
+$teacher_avatar = $CFG->wwwroot . '/blocks/tutor_ai/pix/edo_teacher_avatar.png';
+
+// FIX : HTML autonome — pas de $OUTPUT->header() pour éviter X-Frame-Options dans l'iframe
+header('Content-Type: text/html; charset=utf-8');
+echo '<!DOCTYPE html><html lang="fr" data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Edora — Dashboard Enseignant</title></head><body>';
 ?>
 
 <style>
@@ -442,10 +485,56 @@ echo $OUTPUT->header();
 /* ── Refresh badge ── */
 .edo-refresh { font-size: 11px; color: var(--edo-muted); display: flex; align-items: center; gap: 5px; }
 
+/* ── Topbar légère (remplace le header dupliqué) ───────────────────── */
+.edo-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    margin-bottom: 16px;
+    background: var(--edo-card);
+    border-bottom: 1px solid var(--edo-border);
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.edo-topbar .edo-course-select {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.edo-topbar .edo-course-select label {
+    font-size: 13px;
+    color: var(--edo-muted);
+    font-weight: 500;
+}
+.edo-topbar .edo-course-select select {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--edo-border);
+    background: var(--edo-bg);
+    color: var(--edo-text);
+    font-size: 13px;
+    cursor: pointer;
+    outline: none;
+}
+.edo-topbar .edo-refresh {
+    font-size: 12px;
+    color: var(--edo-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.edo-topbar .edo-refresh a {
+    color: var(--edo-teal2);
+    text-decoration: none;
+    font-weight: 600;
+}
+.edo-topbar .edo-refresh a:hover { text-decoration: underline; }
+
 @media (max-width: 768px) {
     .edo-charts-grid, .edo-charts-grid.three { grid-template-columns: 1fr; }
-    .edo-dash-header { padding: 20px 18px; }
     .edo-dash-body   { padding: 0 14px; }
+    .edo-topbar      { padding: 8px 14px; }
 }
 
 /* ── Mode sombre ────────────────────────────────────────────────────────
@@ -515,15 +604,8 @@ html[data-theme="dark"] .edo-table-missing {
 </div>
 <?php endif; ?>
 
-<!-- ══ HEADER ══════════════════════════════════════════════════════════════ -->
-<div class="edo-dash-header">
-    <div>
-        <div class="edo-dash-title">
-            <img src="<?= $teacher_avatar ?>" alt="" style="width:42px;height:42px;border-radius:50%;object-fit:contain;background:rgba(255,255,255,.12);padding:3px;">
-            Tableau de bord Enseignant
-        </div>
-        <div class="edo-dash-subtitle">Edora AI Tutor — Salle de contrôle pédagogique</div>
-    </div>
+<!-- ══ BARRE COURS — remplace le header dupliqué ══════════════════════════ -->
+<div class="edo-topbar">
     <div class="edo-course-select">
         <label>📚 Cours :</label>
         <form method="get" style="display:inline;">
@@ -536,10 +618,10 @@ html[data-theme="dark"] .edo-table-missing {
                 <?php endforeach; ?>
             </select>
         </form>
-        <div class="edo-refresh" style="color:rgba(255,255,255,0.9);">
-    🕐 <?= date('H:i') ?>
-    <a href="?course_id=<?= $selected_course ?>" style="color:#fff;text-decoration:none;font-weight:600;">↻ Rafraîchir</a>
-</div>
+    </div>
+    <div class="edo-refresh">
+        🕐 <?= date('H:i') ?>
+        <a href="?course_id=<?= $selected_course ?>">↻ Rafraîchir</a>
     </div>
 </div>
 
@@ -825,4 +907,6 @@ if (ctxActivite) {
 </script>
 
 <?php
-echo $OUTPUT->footer();
+// FIX : fermeture HTML autonome
+echo '</body></html>';
+exit;

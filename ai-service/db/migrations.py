@@ -7,9 +7,12 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 logger = logging.getLogger("edora.migrations")
 
+# FIX : noms des tables avec préfixe mdl_ (convention Moodle)
+# FIX : edora_conversations — ajout colonnes task_type, tokens_in, tokens_out
+# FIX : edora_usage_logs — colonne student_id conservée (nom réel en DB)
 TABLES = {
-    "edora_conversations": """
-        CREATE TABLE IF NOT EXISTS `edora_conversations` (
+    "mdl_edora_conversations": """
+        CREATE TABLE IF NOT EXISTS `mdl_edora_conversations` (
             `id`               INT(11)      NOT NULL AUTO_INCREMENT,
             `user_id`          INT(11)      NOT NULL,
             `course_id`        INT(11)      NOT NULL,
@@ -23,14 +26,19 @@ TABLES = {
                 COMMENT 'Score obtenu au quiz de niveau (sur 10)',
             `level_quiz_done`  TINYINT(1)   DEFAULT 0
                 COMMENT '1 si le quiz de niveau a été complété',
+            `task_type`        VARCHAR(50)  DEFAULT NULL
+                COMMENT 'Type de tâche : chat, quiz, expliquer, resumer, exemple, flashcards',
+            `tokens_in`        INT(11)      DEFAULT NULL
+                COMMENT 'Tokens consommés en entrée pour cette interaction',
+            `tokens_out`       INT(11)      DEFAULT NULL
+                COMMENT 'Tokens générés en sortie pour cette interaction',
             PRIMARY KEY (`id`),
             KEY `idx_conversation_id` (`conversation_id`),
             KEY `idx_user_course`     (`user_id`, `course_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
-
-    "edora_usage_logs": """
-        CREATE TABLE IF NOT EXISTS `edora_usage_logs` (
+    "mdl_edora_usage_logs": """
+        CREATE TABLE IF NOT EXISTS `mdl_edora_usage_logs` (
             `id`          INT          NOT NULL AUTO_INCREMENT,
             `student_id`  INT          NOT NULL,
             `course_id`   INT          NOT NULL DEFAULT 0,

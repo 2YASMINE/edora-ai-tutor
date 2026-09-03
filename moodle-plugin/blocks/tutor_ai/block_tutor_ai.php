@@ -8,7 +8,7 @@ class block_tutor_ai extends block_base {
     }
 
     public function get_content() {
-        global $OUTPUT, $USER;
+        global $OUTPUT, $USER, $DB;
 
         if ($this->content !== null) {
             return $this->content;
@@ -18,6 +18,17 @@ class block_tutor_ai extends block_base {
         $this->content->footer = '';
 
         $courseid = (int)$this->page->course->id;
+
+        // ============================================================
+        // FIX : s'assurer que le contexte de page est défini
+        // ============================================================
+        if (!$this->page->context) {
+            if ($courseid > SITEID) {
+                $this->page->set_context(context_course::instance($courseid));
+            } else {
+                $this->page->set_context(context_system::instance());
+            }
+        }
 
         // ============================================================
         // 1. ADMIN
@@ -40,28 +51,20 @@ class block_tutor_ai extends block_base {
         // ============================================================
         // 2. ENSEIGNANT
         // ============================================================
+        // FIX 4 : detection independante du contexte de page / de l'inscription.
+        // L'ancienne logique (enrol_get_users_courses) ne trouve rien sur les
+        // pages hors-cours (ex: /my/) si l'utilisateur n'est pas "enrolled"
+        // au sens strict (role attribue manuellement, etc.) -> le code tombait
+        // alors par erreur dans la branche ETUDIANT. On verifie ici si le role
+        // enseignant est attribue a l'utilisateur, dans N'IMPORTE QUEL contexte.
         $is_teacher    = false;
         $teacher_roles = ['editingteacher', 'teacher'];
+        $roleids       = $DB->get_records_list('role', 'shortname', $teacher_roles, '', 'id, shortname');
 
-        if ($courseid > SITEID) {
-            $ctx       = context_course::instance($courseid);
-            $userroles = get_user_roles($ctx, $USER->id, false);
-            foreach ($userroles as $role) {
-                if (in_array($role->shortname, $teacher_roles)) {
-                    $is_teacher = true;
-                    break;
-                }
-            }
-        } else {
-            foreach (enrol_get_users_courses($USER->id, true) as $course) {
-                $ctx       = context_course::instance($course->id);
-                $userroles = get_user_roles($ctx, $USER->id, false);
-                foreach ($userroles as $role) {
-                    if (in_array($role->shortname, $teacher_roles)) {
-                        $is_teacher = true;
-                        break 2;
-                    }
-                }
+        foreach ($roleids as $role) {
+            if (user_has_role_assignment($USER->id, $role->id)) {
+                $is_teacher = true;
+                break;
             }
         }
 
@@ -113,7 +116,7 @@ class block_tutor_ai extends block_base {
             data-course-id="' . $courseid . '"
             data-student-id="' . $student_id . '"
             data-api-url="'    . s($api_url) . '"
-            data-avatar-url="' . s($avatarurl) . '"
+            data-avatar-url="' . s($avatarurl->out(false)) . '"
             data-lang="'       . s($course_lang) . '">
         </div>';
 
@@ -133,8 +136,9 @@ class block_tutor_ai extends block_base {
     ): string {
 
         $id         = 'edo-' . $role;
+        // FIX 1 : appeler ->out(false) avant s() pour convertir l'objet moodle_url en chaîne
         $safeurl    = s($url->out(false));
-        $safeavatar = s($avatar);
+        $safeavatar = s($avatar->out(false));
         $safetitle  = s($title);
         $safesub    = s($subtitle);
         $safebadge  = s($badge);
@@ -145,23 +149,23 @@ class block_tutor_ai extends block_base {
 
         return '
 <style>
-#' . $id . '-launcher{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* FIX 3 : le bloc Moodle n\'affiche qu\'un placeholder vide — le FAB est injecté dans <body> */
+#' . $id . '-block-placeholder { display: none; }
+
 #' . $id . '-fab{
+    position:fixed;right:24px;bottom:24px;
     width:58px;height:58px;border:0;border-radius:50%;cursor:pointer;padding:0;
     background:linear-gradient(135deg,#005f73,#0a9396);
     box-shadow:0 10px 28px rgba(0,95,115,.34);
     overflow:hidden;display:flex;align-items:center;justify-content:center;
     transition:transform .18s ease,box-shadow .18s ease;
+    z-index:2147483646;
 }
 #' . $id . '-fab:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 14px 34px rgba(0,95,115,.42)}
 #' . $id . '-fab img{width:48px;height:48px;object-fit:contain;border-radius:50%}
 </style>
 
-<div id="' . $id . '-launcher">
-    <button id="' . $id . '-fab" type="button" aria-label="Ouvrir ' . $safetitle . '">
-        <img src="' . $safeavatar . '" alt="">
-    </button>
-</div>
+<div id="' . $id . '-block-placeholder"></div>
 
 <template id="' . $id . '-tpl">
 <style>
@@ -221,11 +225,18 @@ class block_tutor_ai extends block_base {
 #' . $id . '-theme:hover,
 #' . $id . '-min:hover{background:rgba(255,255,255,.18)}
 #' . $id . '-frame{border:0;width:100%;flex:1;min-height:0;background:#f0f4f8}
-#' . $id . '-panel.minimized{height:68px !important;min-height:68px;}
+
+/* FIX 2 : minimisé → largeur fixe 460px, hauteur réduite à la barre de header */
+#' . $id . '-panel.minimized{
+    height:68px !important;
+    min-height:68px;
+    width:460px !important;
+}
 #' . $id . '-panel.minimized #' . $id . '-frame{display:none;}
+
 @media(max-width:700px){
     #' . $id . '-panel{inset:8px;width:auto;height:auto;border-radius:16px}
-    #' . $id . '-panel.minimized{inset:auto;right:8px;bottom:8px;width:calc(100vw - 16px)}
+    #' . $id . '-panel.minimized{inset:auto;right:8px;bottom:8px;width:calc(100vw - 16px) !important;}
 }
 </style>
 
@@ -251,11 +262,18 @@ class block_tutor_ai extends block_base {
 <script>
 (function(){
     var tpl = document.getElementById("' . $id . '-tpl");
-    var fab = document.getElementById("' . $id . '-fab");
-    if (!tpl || !fab) return;
+    if (!tpl) return;
 
     var frag = tpl.content.cloneNode(true);
     document.body.appendChild(frag);
+
+    // FIX 3 : créer et injecter le FAB dans <body> (position:fixed) plutôt que dans le bloc
+    var fab = document.createElement("button");
+    fab.id             = "' . $id . '-fab";
+    fab.type           = "button";
+    fab.setAttribute("aria-label", "Ouvrir ' . $safetitle . '");
+    fab.innerHTML      = \'<img src="' . $safeavatar . '" alt="">\';
+    document.body.appendChild(fab);
 
     var panel    = document.getElementById("' . $id . '-panel");
     var close    = document.getElementById("' . $id . '-close");
