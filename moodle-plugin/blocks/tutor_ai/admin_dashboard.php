@@ -18,13 +18,9 @@ $PAGE->set_title('Edora — Administration IA');
 $PAGE->set_heading('Edora AI Tutor — Administration');
 $PAGE->set_pagelayout('embedded');
 
-// ══════════════════════════════════════════════════════════════════════════════
-// GARDE : vérifier l'existence des tables avant toute requête
-// ══════════════════════════════════════════════════════════════════════════════
 $has_usage_logs    = $DB->get_manager()->table_exists('edora_usage_logs');
 $has_conversations = $DB->get_manager()->table_exists('edora_conversations');
 
-// ── Données usage API (optionnel si table absente) ────────────────────────────
 $global = (object)[
     'tokens_in'   => 0,
     'tokens_out'  => 0,
@@ -58,20 +54,19 @@ if ($has_usage_logs) {
     ");
 }
 
-// ── Données conversations (stats pédagogiques) ────────────────────────────────
-$total_conversations = 0;
-$total_students      = 0;
+$total_conversations  = 0;
+$total_students       = 0;
 $total_courses_active = 0;
-$top_courses         = [];
-$recent_activity     = [];
-$task_distribution   = [];
+$top_courses          = [];
+$recent_activity      = [];
+$task_distribution    = [];
 
 if ($has_conversations) {
     $agg = $DB->get_record_sql("
         SELECT
-            COUNT(*)                    AS total_conversations,
-            COUNT(DISTINCT student_id)  AS total_students,
-            COUNT(DISTINCT course_id)   AS total_courses_active
+            COUNT(*)                  AS total_conversations,
+            COUNT(DISTINCT user_id)   AS total_students,
+            COUNT(DISTINCT course_id) AS total_courses_active
         FROM {edora_conversations}
     ");
     if ($agg) {
@@ -84,8 +79,8 @@ if ($has_conversations) {
         SELECT
             ec.course_id,
             c.fullname,
-            COUNT(*)                   AS nb_conversations,
-            COUNT(DISTINCT student_id) AS nb_etudiants
+            COUNT(*)                  AS nb_conversations,
+            COUNT(DISTINCT user_id)   AS nb_etudiants
         FROM {edora_conversations} ec
         LEFT JOIN {course} c ON c.id = ec.course_id
         GROUP BY ec.course_id, c.fullname
@@ -113,13 +108,11 @@ if ($has_conversations) {
     ");
 }
 
-// ── Infos plateforme Moodle ───────────────────────────────────────────────────
 $total_users   = $DB->count_records('user',   ['deleted' => 0, 'confirmed' => 1]);
 $total_courses = $DB->count_records('course',  ['visible' => 1]);
 
 $admin_avatar = $OUTPUT->image_url('edo_admin_avatar', 'block_tutor_ai');
 
-// ── Données JS pour le mini-graphe d'activité ─────────────────────────────────
 $chart_labels = [];
 $chart_values = [];
 foreach ($recent_activity as $row) {
@@ -148,15 +141,19 @@ $task_labels_fr = [
 
 echo $OUTPUT->header();
 ?>
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+(function () {
+    var params = new URLSearchParams(window.location.search);
+    var fromUrl = params.get('theme');
+    var theme = (fromUrl === 'dark' || fromUrl === 'light')
+        ? fromUrl
+        : (localStorage.getItem('edora_theme') === 'dark' ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('edora_theme', theme);
+})();
+</script>
 <style>
-/* ── Reset & tokens ─────────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-
 :root{
     --teal-dark:#005f73;
     --teal:#0a9396;
@@ -172,24 +169,29 @@ echo $OUTPUT->header();
     --blue-pale:#dbeafe;
     --purple:#8b5cf6;
     --purple-pale:#ede9fe;
-
     --bg:#f0f4f8;
     --surface:#ffffff;
     --surface2:#f8fafc;
     --border:#e2e8f0;
-    --border-teal:rgba(10,147,150,.18);
     --text:#1e293b;
     --text-muted:#64748b;
     --text-light:#94a3b8;
-
     --radius-sm:10px;
     --radius:16px;
-    --radius-lg:20px;
     --shadow-sm:0 2px 8px rgba(0,0,0,.06);
     --shadow:0 4px 20px rgba(0,0,0,.08);
-    --shadow-lg:0 8px 32px rgba(0,0,0,.12);
 }
-
+html[data-theme="dark"] {
+    --bg:#0b1220;
+    --surface:#111827;
+    --surface2:#1a2235;
+    --border:#1f2937;
+    --text:#e2e8f0;
+    --text-muted:#94a3b8;
+    --text-light:#64748b;
+    --teal-pale:rgba(10,147,150,.16);
+    --amber-pale:rgba(245,158,11,.14);
+}
 body{
     background:var(--bg);
     color:var(--text);
@@ -198,52 +200,7 @@ body{
     line-height:1.5;
     min-height:100vh;
 }
-
-/* ── Layout ─────────────────────────────────────────────────────────────── */
 #edo-admin{display:flex;flex-direction:column;min-height:100vh}
-
-/* ── Header — même style que student/teacher ────────────────────────────── */
-.edo-header{
-    background:linear-gradient(135deg,var(--teal-dark),var(--teal));
-    padding:0 20px;
-    height:68px;
-    display:flex;
-    align-items:center;
-    gap:12px;
-    color:#fff;
-    flex-shrink:0;
-    box-shadow:0 4px 16px rgba(0,95,115,.3);
-    position:relative;
-}
-.edo-header::after{
-    content:"";
-    position:absolute;
-    bottom:0;left:10%;right:10%;height:1px;
-    background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);
-}
-.edo-header-avatar{
-    width:44px;height:44px;border-radius:50%;
-    background:rgba(255,255,255,.12);
-    border:2px solid rgba(255,255,255,.25);
-    object-fit:contain;
-    flex-shrink:0;
-}
-.edo-header-info{flex:1;min-width:0}
-.edo-header-title{
-    font-size:15px;font-weight:700;
-    display:flex;align-items:center;gap:8px;
-}
-.edo-badge{
-    font-size:9px;font-weight:700;letter-spacing:.06em;
-    padding:2px 7px;border-radius:999px;
-    background:rgba(255,255,255,.15);
-    border:1px solid rgba(255,255,255,.25);
-    color:#fff;
-}
-.edo-badge.admin{background:rgba(245,158,11,.25);border-color:rgba(245,158,11,.4)}
-.edo-header-sub{font-size:11px;opacity:.75;margin-top:1px}
-
-/* ── Alerte table absente ───────────────────────────────────────────────── */
 .edo-alert{
     margin:16px 20px 0;padding:12px 16px;
     border-radius:var(--radius-sm);
@@ -252,182 +209,62 @@ body{
     color:#92400e;font-size:13px;
     display:flex;align-items:center;gap:10px;
 }
-.edo-alert svg{flex-shrink:0}
-
-/* ── Corps principal ────────────────────────────────────────────────────── */
 .edo-body{padding:20px;display:flex;flex-direction:column;gap:18px;flex:1}
-
-/* ── KPI grid — 2 rangées ───────────────────────────────────────────────── */
-.edo-kpis{
-    display:grid;
-    grid-template-columns:repeat(4,1fr);
-    gap:12px;
-}
+.edo-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
 .edo-kpi{
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:var(--radius);
-    padding:18px 16px;
-    box-shadow:var(--shadow-sm);
-    display:flex;flex-direction:column;gap:6px;
-    transition:box-shadow .2s;
-    position:relative;
-    overflow:hidden;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:18px 16px;
+    box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:6px;
+    transition:box-shadow .2s;position:relative;overflow:hidden;
 }
 .edo-kpi::before{
-    content:"";
-    position:absolute;top:0;left:0;right:0;height:3px;
+    content:"";position:absolute;top:0;left:0;right:0;height:3px;
     background:var(--kpi-color,var(--teal));
     border-radius:var(--radius) var(--radius) 0 0;
 }
 .edo-kpi.amber{--kpi-color:var(--amber)}
 .edo-kpi.green{--kpi-color:var(--green)}
 .edo-kpi.blue{--kpi-color:var(--blue)}
-.edo-kpi.purple{--kpi-color:var(--purple)}
-.edo-kpi.red{--kpi-color:var(--red)}
-
 .edo-kpi:hover{box-shadow:var(--shadow)}
 .kpi-icon{font-size:22px;line-height:1}
-.kpi-value{
-    font-size:26px;font-weight:800;
-    color:var(--kpi-color,var(--teal));
-    line-height:1;
-}
+.kpi-value{font-size:26px;font-weight:800;color:var(--kpi-color,var(--teal));line-height:1;}
 .kpi-label{font-size:11px;color:var(--text-muted);font-weight:500;text-transform:uppercase;letter-spacing:.04em}
 .kpi-sub{font-size:11px;color:var(--text-light)}
-
-/* ── Cards ──────────────────────────────────────────────────────────────── */
 .edo-row{display:grid;gap:14px}
 .edo-row.two{grid-template-columns:1fr 1fr}
-.edo-row.three{grid-template-columns:2fr 1fr}
-
-.edo-card{
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:var(--radius);
-    box-shadow:var(--shadow-sm);
-    overflow:hidden;
-}
-.edo-card-head{
-    padding:14px 18px;
-    border-bottom:1px solid var(--border);
-    display:flex;align-items:center;gap:10px;
-    background:var(--surface2);
-}
+.edo-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden;}
+.edo-card-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--surface2);}
 .edo-card-head h3{font-size:13px;font-weight:700;color:var(--text)}
-.edo-card-head .ico{
-    width:30px;height:30px;border-radius:8px;
-    display:flex;align-items:center;justify-content:center;
-    font-size:15px;
-    background:var(--teal-pale);
-}
+.edo-card-head .ico{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--teal-pale);}
 .edo-card-body{padding:16px}
-
-/* ── Table ──────────────────────────────────────────────────────────────── */
 .edo-table{width:100%;border-collapse:collapse;font-size:12px}
-.edo-table th{
-    padding:8px 10px;
-    color:var(--text-muted);
-    font-size:10px;text-transform:uppercase;letter-spacing:.05em;
-    border-bottom:2px solid var(--border);
-    text-align:left;background:var(--surface2);
-}
-.edo-table td{
-    padding:10px 10px;
-    border-bottom:1px solid var(--border);
-    color:var(--text);
-}
+.edo-table th{padding:8px 10px;color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid var(--border);text-align:left;background:var(--surface2);}
+.edo-table td{padding:10px 10px;border-bottom:1px solid var(--border);color:var(--text);}
 .edo-table tr:last-child td{border-bottom:0}
 .edo-table tr:hover td{background:var(--teal-pale)}
 .cost-cell{color:var(--amber);font-weight:700}
-.pill{
-    display:inline-flex;align-items:center;gap:4px;
-    padding:3px 8px;border-radius:999px;font-size:10px;font-weight:600;
-}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:600;}
 .pill.teal{background:var(--teal-pale);color:var(--teal-dark)}
-.pill.amber{background:var(--amber-pale);color:#92400e}
-.pill.green{background:var(--green-pale);color:#065f46}
 .pill.blue{background:var(--blue-pale);color:#1e40af}
-.pill.purple{background:var(--purple-pale);color:#5b21b6}
-
-/* ── Mini bar chart (JS-less) ────────────────────────────────────────────── */
 .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .bar-row:last-child{margin-bottom:0}
 .bar-label{width:90px;font-size:11px;color:var(--text-muted);flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar-track{flex:1;height:8px;background:var(--border);border-radius:999px;overflow:hidden}
 .bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--teal),var(--teal-light));transition:width .6s ease}
 .bar-num{width:36px;font-size:11px;font-weight:700;color:var(--text);text-align:right;flex-shrink:0}
-
-/* ── Mini activity sparkline (Canvas) ───────────────────────────────────── */
 #edo-sparkline{width:100%;height:80px;display:block}
-
-/* ── Task icons grid ────────────────────────────────────────────────────── */
-.task-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.task-item{
-    display:flex;align-items:center;gap:10px;
-    background:var(--surface2);border:1px solid var(--border);
-    border-radius:var(--radius-sm);padding:10px 12px;
-    transition:border-color .2s;
-}
-.task-item:hover{border-color:var(--teal)}
-.task-item .t-ico{font-size:20px;line-height:1}
-.task-item .t-info{flex:1;min-width:0}
-.task-item .t-name{font-size:12px;font-weight:600;color:var(--text)}
-.task-item .t-nb{font-size:10px;color:var(--text-muted)}
-
-/* ── Empty state ────────────────────────────────────────────────────────── */
-.edo-empty{
-    padding:32px;text-align:center;color:var(--text-muted);font-size:13px;
-}
+.edo-empty{padding:32px;text-align:center;color:var(--text-muted);font-size:13px;}
 .edo-empty .e-ico{font-size:36px;margin-bottom:10px}
-
-/* ── Status indicator ───────────────────────────────────────────────────── */
-.edo-status-dot{
-    display:inline-block;width:8px;height:8px;border-radius:50%;
-    background:var(--green);
-    box-shadow:0 0 6px var(--green);
-}
-.edo-status-dot.warn{background:var(--amber);box-shadow:0 0 6px var(--amber)}
-
-/* ── Section title ──────────────────────────────────────────────────────── */
-.edo-section-title{
-    font-size:11px;font-weight:700;color:var(--text-muted);
-    text-transform:uppercase;letter-spacing:.07em;
-    padding:0 2px;
-}
-
-/* ── Responsive ─────────────────────────────────────────────────────────── */
+.edo-section-title{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.07em;padding:0 2px;}
 @media(max-width:900px){
     .edo-kpis{grid-template-columns:repeat(2,1fr)}
-    .edo-row.two,.edo-row.three{grid-template-columns:1fr}
-}
-@media(max-width:560px){
-    .edo-kpis{grid-template-columns:1fr 1fr}
-    .edo-body{padding:14px}
-    .kpi-value{font-size:22px}
-    .task-grid{grid-template-columns:1fr}
+    .edo-row.two{grid-template-columns:1fr}
 }
 </style>
 
 <div id="edo-admin">
-
-    <!-- ── HEADER ───────────────────────────────────────────────────────── -->
-    <div class="edo-header">
-        <img class="edo-header-avatar" src="<?= s($admin_avatar) ?>" alt="">
-        <div class="edo-header-info">
-            <div class="edo-header-title">
-                Edora Administration
-                <span class="edo-badge admin">ADMIN</span>
-            </div>
-            <div class="edo-header-sub">Monitoring global de la plateforme et de l'activité IA</div>
-        </div>
-        <span class="edo-status-dot <?= ($has_usage_logs && $has_conversations) ? '' : 'warn' ?>"
-              title="<?= ($has_usage_logs && $has_conversations) ? 'Tables OK' : 'Tables manquantes' ?>"></span>
-    </div>
-
     <div class="edo-body">
 
-        <!-- ── ALERTE si tables absentes ────────────────────────────────── -->
         <?php if (!$has_usage_logs || !$has_conversations): ?>
         <div class="edo-alert">
             <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path stroke="#92400e" stroke-width="2" stroke-linecap="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
@@ -435,82 +272,66 @@ body{
                 <?php if (!$has_usage_logs && !$has_conversations): ?>
                     Tables <code>edora_usage_logs</code> et <code>edora_conversations</code> introuvables.
                 <?php elseif (!$has_usage_logs): ?>
-                    Table <code>edora_usage_logs</code> introuvable — les données de coûts API ne sont pas disponibles.
+                    Table <code>edora_usage_logs</code> introuvable.
                 <?php else: ?>
-                    Table <code>edora_conversations</code> introuvable — les statistiques pédagogiques ne sont pas disponibles.
+                    Table <code>edora_conversations</code> introuvable.
                 <?php endif; ?>
-                Lancez <code>db/install.php</code> ou réinstallez le plugin pour créer les tables manquantes.
             </span>
         </div>
         <?php endif; ?>
 
-        <!-- ── KPIs PLATEFORME ───────────────────────────────────────────── -->
         <div class="edo-section-title">Vue globale plateforme</div>
         <div class="edo-kpis">
-
             <div class="edo-kpi blue">
                 <div class="kpi-icon">👥</div>
                 <div class="kpi-value"><?= number_format($total_users) ?></div>
                 <div class="kpi-label">Utilisateurs actifs</div>
             </div>
-
             <div class="edo-kpi green">
                 <div class="kpi-icon">📚</div>
                 <div class="kpi-value"><?= number_format($total_courses) ?></div>
                 <div class="kpi-label">Cours visibles</div>
                 <div class="kpi-sub"><?= $total_courses_active ?> avec activité Edora</div>
             </div>
-
             <div class="edo-kpi" style="--kpi-color:var(--teal)">
                 <div class="kpi-icon">🦉</div>
                 <div class="kpi-value"><?= number_format($total_students) ?></div>
                 <div class="kpi-label">Étudiants Edora</div>
                 <div class="kpi-sub"><?= number_format($total_conversations) ?> conversations</div>
             </div>
-
             <div class="edo-kpi amber">
                 <div class="kpi-icon">⚡</div>
                 <div class="kpi-value"><?= number_format((int)$global->calls_count) ?></div>
                 <div class="kpi-label">Appels API IA</div>
                 <div class="kpi-sub">$<?= number_format((float)$global->cost_usd, 4) ?> total</div>
             </div>
-
         </div>
 
-        <!-- ── KPIs TOKENS ──────────────────────────────────────────────── -->
         <div class="edo-section-title">Consommation API</div>
         <div class="edo-kpis">
-
             <div class="edo-kpi" style="--kpi-color:var(--teal)">
                 <div class="kpi-icon">📥</div>
                 <div class="kpi-value"><?= number_format((int)$global->tokens_in) ?></div>
                 <div class="kpi-label">Tokens IN</div>
             </div>
-
             <div class="edo-kpi" style="--kpi-color:var(--teal)">
                 <div class="kpi-icon">📤</div>
                 <div class="kpi-value"><?= number_format((int)$global->tokens_out) ?></div>
                 <div class="kpi-label">Tokens OUT</div>
             </div>
-
             <div class="edo-kpi amber">
                 <div class="kpi-icon">💰</div>
                 <div class="kpi-value">$<?= number_format((float)$global->cost_usd, 4) ?></div>
                 <div class="kpi-label">Coût total USD</div>
             </div>
-
             <div class="edo-kpi" style="--kpi-color:var(--text-muted)">
                 <div class="kpi-icon">📊</div>
                 <div class="kpi-value"><?= $global->calls_count > 0 ? '$'.number_format((float)$global->cost_usd / (int)$global->calls_count, 6) : '—' ?></div>
                 <div class="kpi-label">Coût / appel</div>
             </div>
-
         </div>
 
-        <!-- ── ACTIVITÉ + TASKS ─────────────────────────────────────────── -->
         <div class="edo-row two">
-
-            <!-- Mini sparkline activité 14j -->
             <div class="edo-card">
                 <div class="edo-card-head">
                     <div class="ico">📈</div>
@@ -524,8 +345,6 @@ body{
                     <?php endif; ?>
                 </div>
             </div>
-
-            <!-- Distribution des tâches -->
             <div class="edo-card">
                 <div class="edo-card-head">
                     <div class="ico">🎯</div>
@@ -551,10 +370,8 @@ body{
                     <?php endif; ?>
                 </div>
             </div>
-
         </div>
 
-        <!-- ── TOP COURS (pédagogique) ──────────────────────────────────── -->
         <?php if ($has_conversations && !empty($top_courses)): ?>
         <div class="edo-card">
             <div class="edo-card-head">
@@ -563,13 +380,7 @@ body{
             </div>
             <div class="edo-card-body" style="padding:0">
                 <table class="edo-table">
-                    <thead>
-                        <tr>
-                            <th>Cours</th>
-                            <th>Conversations</th>
-                            <th>Étudiants</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Cours</th><th>Conversations</th><th>Étudiants</th></tr></thead>
                     <tbody>
                     <?php foreach ($top_courses as $row): ?>
                         <tr>
@@ -584,7 +395,6 @@ body{
         </div>
         <?php endif; ?>
 
-        <!-- ── TOP COURS (usage API) ────────────────────────────────────── -->
         <?php if ($has_usage_logs && !empty($bycourse_usage)): ?>
         <div class="edo-card">
             <div class="edo-card-head">
@@ -593,15 +403,7 @@ body{
             </div>
             <div class="edo-card-body" style="padding:0">
                 <table class="edo-table">
-                    <thead>
-                        <tr>
-                            <th>Cours</th>
-                            <th>Appels</th>
-                            <th>Tokens IN</th>
-                            <th>Tokens OUT</th>
-                            <th>Coût USD</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Cours</th><th>Appels</th><th>Tokens IN</th><th>Tokens OUT</th><th>Coût USD</th></tr></thead>
                     <tbody>
                     <?php foreach ($bycourse_usage as $row): ?>
                         <tr>
@@ -618,7 +420,6 @@ body{
         </div>
         <?php endif; ?>
 
-        <!-- ── VIDE TOTAL ─────────────────────────────────────────────── -->
         <?php if (!$has_usage_logs && !$has_conversations): ?>
         <div class="edo-card">
             <div class="edo-card-body">
@@ -631,8 +432,8 @@ body{
         </div>
         <?php endif; ?>
 
-    </div><!-- /edo-body -->
-</div><!-- /edo-admin -->
+    </div>
+</div>
 
 <?php if (!empty($chart_labels)): ?>
 <script>
@@ -643,8 +444,6 @@ body{
     var labels = <?= json_encode($chart_labels) ?>;
     var values = <?= json_encode($chart_values) ?>;
     if(!values.length) return;
-
-    // HiDPI
     var dpr = window.devicePixelRatio || 1;
     var W = canvas.offsetWidth || 340;
     var H = 80;
@@ -653,26 +452,17 @@ body{
     canvas.style.width  = W + 'px';
     canvas.style.height = H + 'px';
     ctx.scale(dpr, dpr);
-
     var maxV = Math.max.apply(null, values) || 1;
     var pad  = {top:8, right:8, bottom:20, left:28};
     var cW   = W - pad.left - pad.right;
     var cH   = H - pad.top  - pad.bottom;
     var step = cW / Math.max(values.length - 1, 1);
-
-    // Points
     var pts = values.map(function(v,i){
-        return {
-            x: pad.left + i * step,
-            y: pad.top  + cH - (v / maxV) * cH
-        };
+        return { x: pad.left + i * step, y: pad.top + cH - (v / maxV) * cH };
     });
-
-    // Gradient fill
     var grad = ctx.createLinearGradient(0, pad.top, 0, H - pad.bottom);
     grad.addColorStop(0, 'rgba(10,147,150,.25)');
     grad.addColorStop(1, 'rgba(10,147,150,.02)');
-
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     pts.forEach(function(p,i){ if(i>0) ctx.lineTo(p.x, p.y); });
@@ -681,8 +471,6 @@ body{
     ctx.closePath();
     ctx.fillStyle = grad;
     ctx.fill();
-
-    // Line
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     pts.forEach(function(p,i){ if(i>0) ctx.lineTo(p.x, p.y); });
@@ -690,24 +478,16 @@ body{
     ctx.lineWidth   = 2;
     ctx.lineJoin    = 'round';
     ctx.stroke();
-
-    // Dots
-    pts.forEach(function(p){ 
+    pts.forEach(function(p){
         ctx.beginPath();
         ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
         ctx.fillStyle = '#0a9396';
         ctx.fill();
     });
-
-    // X labels (every 3rd)
     ctx.fillStyle = '#94a3b8';
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
-    labels.forEach(function(l,i){
-        if(i % 3 === 0) ctx.fillText(l, pts[i].x, H - 4);
-    });
-
-    // Y axis max label
+    labels.forEach(function(l,i){ if(i % 3 === 0) ctx.fillText(l, pts[i].x, H - 4); });
     ctx.textAlign = 'right';
     ctx.fillText(maxV, pad.left - 4, pad.top + 4);
 })();

@@ -20,7 +20,7 @@ class block_tutor_ai extends block_base {
         $courseid = (int)$this->page->course->id;
 
         // ============================================================
-        // 1. ADMIN : vue administration uniquement
+        // 1. ADMIN
         // ============================================================
         if (is_siteadmin()) {
             $url    = new moodle_url('/blocks/tutor_ai/admin_dashboard.php');
@@ -38,19 +38,29 @@ class block_tutor_ai extends block_base {
         }
 
         // ============================================================
-        // 2. ENSEIGNANT : seulement s'il gère au moins un cours
+        // 2. ENSEIGNANT
         // ============================================================
-        $is_teacher = false;
+        $is_teacher    = false;
+        $teacher_roles = ['editingteacher', 'teacher'];
 
         if ($courseid > SITEID) {
-            $ctx        = context_course::instance($courseid);
-            $is_teacher = has_capability('moodle/course:manageactivities', $ctx);
-        } else {
-            foreach (enrol_get_users_courses($USER->id, true) as $course) {
-                $ctx = context_course::instance($course->id);
-                if (has_capability('moodle/course:manageactivities', $ctx)) {
+            $ctx       = context_course::instance($courseid);
+            $userroles = get_user_roles($ctx, $USER->id, false);
+            foreach ($userroles as $role) {
+                if (in_array($role->shortname, $teacher_roles)) {
                     $is_teacher = true;
                     break;
+                }
+            }
+        } else {
+            foreach (enrol_get_users_courses($USER->id, true) as $course) {
+                $ctx       = context_course::instance($course->id);
+                $userroles = get_user_roles($ctx, $USER->id, false);
+                foreach ($userroles as $role) {
+                    if (in_array($role->shortname, $teacher_roles)) {
+                        $is_teacher = true;
+                        break 2;
+                    }
                 }
             }
         }
@@ -76,7 +86,7 @@ class block_tutor_ai extends block_base {
         }
 
         // ============================================================
-        // 3. ETUDIANT : chat existant, inchangé
+        // 3. ETUDIANT
         // ============================================================
         $url     = 'http://host.docker.internal:8000/health';
         $ch      = curl_init($url);
@@ -113,21 +123,13 @@ class block_tutor_ai extends block_base {
         return $this->content;
     }
 
-    /**
-     * Popup launcher pour enseignant/admin.
-     *
-     * FIX POPUP : le panel est injecté dans <body> via JS afin d'échapper
-     * au stacking context créé par le bloc Moodle (transform, overflow:hidden,
-     * will-change sur les parents). Sans ce déplacement, position:fixed reste
-     * confiné dans le conteneur du bloc même avec z-index:99999.
-     */
     private function build_dashboard_launcher(
-        string       $role,
-        string       $title,
-        string       $subtitle,
-        moodle_url   $url,
-        \moodle_url  $avatar,
-        string       $badge
+        string      $role,
+        string      $title,
+        string      $subtitle,
+        moodle_url  $url,
+        \moodle_url $avatar,
+        string      $badge
     ): string {
 
         $id         = 'edo-' . $role;
@@ -137,16 +139,14 @@ class block_tutor_ai extends block_base {
         $safesub    = s($subtitle);
         $safebadge  = s($badge);
 
-        // Couleur du badge selon le rôle
         $badge_style = ($role === 'admin')
             ? 'background:rgba(245,158,11,.22);border-color:rgba(245,158,11,.4);color:#fbbf24;'
             : 'background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.22);color:#fff;';
 
         return '
-<!-- ── FAB visible dans le bloc ─────────────────────────────────────────── -->
 <style>
-#' . $id . '-launcher {font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-#' . $id . '-fab {
+#' . $id . '-launcher{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+#' . $id . '-fab{
     width:58px;height:58px;border:0;border-radius:50%;cursor:pointer;padding:0;
     background:linear-gradient(135deg,#005f73,#0a9396);
     box-shadow:0 10px 28px rgba(0,95,115,.34);
@@ -163,33 +163,28 @@ class block_tutor_ai extends block_base {
     </button>
 </div>
 
-<!-- ── Panel (sera déplacé dans <body> par JS) ───────────────────────────── -->
 <template id="' . $id . '-tpl">
 <style>
-#' . $id . '-panel {
-    /* FIX : position:fixed sur un élément direct de <body>
-       => aucun parent ne peut créer un stacking context parasite */
-    position:fixed;
-    right:24px;bottom:24px;
+#' . $id . '-panel{
+    position:fixed;right:24px;bottom:24px;
     width:min(1180px,calc(100vw - 48px));
     height:min(780px,calc(100vh - 48px));
-    z-index:2147483647;          /* valeur maximale possible */
-    display:none;
+    z-index:2147483647;display:none;
     border-radius:20px;overflow:hidden;
     background:#f0f4f8;
     border:1px solid rgba(10,147,150,.2);
     box-shadow:0 24px 70px rgba(0,0,0,.28);
     flex-direction:column;
 }
-#' . $id . '-panel.open {
+#' . $id . '-panel.open{
     display:flex;
     animation:edoPop_' . $role . ' .18s ease-out;
 }
-@keyframes edoPop_' . $role . ' {
+@keyframes edoPop_' . $role . '{
     from{opacity:0;transform:translateY(10px) scale(.985)}
-    to  {opacity:1;transform:none}
+    to{opacity:1;transform:none}
 }
-#' . $id . '-header {
+#' . $id . '-header{
     height:68px;flex:0 0 68px;
     padding:0 14px 0 16px;
     display:flex;align-items:center;gap:11px;
@@ -197,46 +192,37 @@ class block_tutor_ai extends block_base {
     background:linear-gradient(135deg,#005f73,#0a9396);
     flex-shrink:0;
 }
-#' . $id . '-header img {
+#' . $id . '-header img{
     width:42px;height:42px;border-radius:50%;
     object-fit:contain;background:rgba(255,255,255,.12);
     border:2px solid rgba(255,255,255,.18);
 }
-#' . $id . '-info   {min-width:0;flex:1}
-#' . $id . '-htitle {font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center}
-#' . $id . '-hbadge {
+#' . $id . '-info{min-width:0;flex:1}
+#' . $id . '-htitle{font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center}
+#' . $id . '-hbadge{
     font-size:9px;padding:2px 7px;border-radius:999px;
     font-weight:700;letter-spacing:.04em;
     ' . $badge_style . '
 }
-#' . $id . '-hsub   {font-size:11px;opacity:.76;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#' . $id . '-hsub{font-size:11px;opacity:.76;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #' . $id . '-close,
 #' . $id . '-newtab,
 #' . $id . '-theme,
-#' . $id . '-min {
+#' . $id . '-min{
     width:34px;height:34px;border-radius:10px;
     border:1px solid rgba(255,255,255,.18);
     background:rgba(255,255,255,.08);
     color:#fff;cursor:pointer;font-size:17px;
     display:flex;align-items:center;justify-content:center;
-    transition:background .15s;
-    flex-shrink:0;
+    transition:background .15s;flex-shrink:0;
 }
 #' . $id . '-close:hover,
 #' . $id . '-newtab:hover,
 #' . $id . '-theme:hover,
 #' . $id . '-min:hover{background:rgba(255,255,255,.18)}
-#' . $id . '-frame  {border:0;width:100%;flex:1;min-height:0;background:#f0f4f8}
-
-/* ── Etat minimisé : ne montrer que le header ─────────────────────────── */
-#' . $id . '-panel.minimized {
-    height:68px !important;
-    min-height:68px;
-}
-#' . $id . '-panel.minimized #' . $id . '-frame {
-    display:none;
-}
-
+#' . $id . '-frame{border:0;width:100%;flex:1;min-height:0;background:#f0f4f8}
+#' . $id . '-panel.minimized{height:68px !important;min-height:68px;}
+#' . $id . '-panel.minimized #' . $id . '-frame{display:none;}
 @media(max-width:700px){
     #' . $id . '-panel{inset:8px;width:auto;height:auto;border-radius:16px}
     #' . $id . '-panel.minimized{inset:auto;right:8px;bottom:8px;width:calc(100vw - 16px)}
@@ -253,10 +239,10 @@ class block_tutor_ai extends block_base {
             </div>
             <div id="' . $id . '-hsub">' . $safesub . '</div>
         </div>
-        <button id="' . $id . '-theme"  type="button" title="Mode sombre / clair" aria-label="Basculer le thème">🌙</button>
-        <button id="' . $id . '-min"    type="button" title="Réduire" aria-label="Réduire">–</button>
-        <button id="' . $id . '-newtab" type="button" title="Ouvrir dans un nouvel onglet" aria-label="Nouvel onglet">↗</button>
-        <button id="' . $id . '-close"  type="button" title="Fermer" aria-label="Fermer">×</button>
+        <button id="' . $id . '-theme" type="button" title="Mode sombre / clair" aria-label="Basculer le theme"></button>
+        <button id="' . $id . '-min" type="button" title="Reduire" aria-label="Reduire">&#8211;</button>
+        <button id="' . $id . '-newtab" type="button" title="Nouvel onglet" aria-label="Nouvel onglet">&#8599;</button>
+        <button id="' . $id . '-close" type="button" title="Fermer" aria-label="Fermer">&#215;</button>
     </div>
     <iframe id="' . $id . '-frame" src="about:blank" data-src="' . $safeurl . '" title="' . $safetitle . '" allowfullscreen></iframe>
 </div>
@@ -264,60 +250,54 @@ class block_tutor_ai extends block_base {
 
 <script>
 (function(){
-    // ── Déplacer le panel dans <body> pour échapper au stacking context ──
-    var tpl   = document.getElementById("' . $id . '-tpl");
-    var fab   = document.getElementById("' . $id . '-fab");
+    var tpl = document.getElementById("' . $id . '-tpl");
+    var fab = document.getElementById("' . $id . '-fab");
     if (!tpl || !fab) return;
 
-    // Cloner le contenu du <template> et l\'injecter dans document.body
-    var frag  = tpl.content.cloneNode(true);
+    var frag = tpl.content.cloneNode(true);
     document.body.appendChild(frag);
 
-    // Récupérer les éléments maintenant dans <body>
-    var panel  = document.getElementById("' . $id . '-panel");
-    var close  = document.getElementById("' . $id . '-close");
-    var newtab = document.getElementById("' . $id . '-newtab");
+    var panel    = document.getElementById("' . $id . '-panel");
+    var close    = document.getElementById("' . $id . '-close");
+    var newtab   = document.getElementById("' . $id . '-newtab");
     var themeBtn = document.getElementById("' . $id . '-theme");
     var minBtn   = document.getElementById("' . $id . '-min");
-    var frame  = document.getElementById("' . $id . '-frame");
+    var frame    = document.getElementById("' . $id . '-frame");
     if (!panel || !frame) return;
 
-    // ── Thème (partagé entre les popups admin/enseignant) ───────────────────
     var THEME_KEY = "edora_theme";
+    var SVG_MOON  = "<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><path d=\'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z\'/></svg>";
+    var SVG_SUN   = "<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><circle cx=\'12\' cy=\'12\' r=\'5\'/><line x1=\'12\' y1=\'1\' x2=\'12\' y2=\'3\'/><line x1=\'12\' y1=\'21\' x2=\'12\' y2=\'23\'/><line x1=\'1\' y1=\'12\' x2=\'3\' y2=\'12\'/><line x1=\'21\' y1=\'12\' x2=\'23\' y2=\'12\'/></svg>";
+
     function getTheme() {
         return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
+    }
+    function applyThemeIcon() {
+        themeBtn.innerHTML = getTheme() === "dark" ? SVG_SUN : SVG_MOON;
     }
     function frameUrlWithTheme(theme) {
         var base = frame.dataset.src;
         var sep  = base.indexOf("?") === -1 ? "?" : "&";
         return base + sep + "theme=" + theme;
     }
-    function applyThemeIcon() {
-        themeBtn.textContent = getTheme() === "dark" ? "☀️" : "🌙";
-    }
     function setTheme(theme) {
         localStorage.setItem(THEME_KEY, theme);
         applyThemeIcon();
-        if (loaded) {
-            // Recharge le contenu de l\'iframe avec le nouveau thème.
-            frame.src = frameUrlWithTheme(theme);
-        }
+        if (loaded) { frame.src = frameUrlWithTheme(theme); }
     }
     applyThemeIcon();
 
-    // ── État ──────────────────────────────────────────────────────────────
     var loaded = false;
 
     function openPanel() {
         if (!loaded) {
             frame.src = frameUrlWithTheme(getTheme());
-            loaded    = true;
+            loaded = true;
         }
         panel.classList.remove("minimized");
         panel.classList.add("open");
         panel.setAttribute("aria-hidden", "false");
         fab.setAttribute("aria-expanded", "true");
-        // Focus trap léger
         setTimeout(function(){ close.focus(); }, 200);
     }
 
@@ -331,8 +311,8 @@ class block_tutor_ai extends block_base {
 
     function toggleMinimize() {
         panel.classList.toggle("minimized");
-        minBtn.textContent = panel.classList.contains("minimized") ? "▢" : "–";
-        minBtn.title = panel.classList.contains("minimized") ? "Agrandir" : "Réduire";
+        minBtn.textContent = panel.classList.contains("minimized") ? "\u25a2" : "\u2013";
+        minBtn.title = panel.classList.contains("minimized") ? "Agrandir" : "Reduire";
     }
 
     fab.addEventListener("click", openPanel);
@@ -344,22 +324,14 @@ class block_tutor_ai extends block_base {
     newtab.addEventListener("click", function(){
         window.open(frameUrlWithTheme(getTheme()), "_blank", "noopener,noreferrer");
     });
-
-    // Fermer sur Escape
     document.addEventListener("keydown", function(e){
-        if (e.key === "Escape" && panel.classList.contains("open")) {
-            closePanel();
-        }
+        if (e.key === "Escape" && panel.classList.contains("open")) { closePanel(); }
     });
-
-    // Fermer en cliquant sur l\'overlay (zone hors panel)
     document.addEventListener("click", function(e){
         if (panel.classList.contains("open")
             && !panel.contains(e.target)
             && e.target !== fab
-            && !fab.contains(e.target)) {
-            closePanel();
-        }
+            && !fab.contains(e.target)) { closePanel(); }
     });
 })();
 </script>';

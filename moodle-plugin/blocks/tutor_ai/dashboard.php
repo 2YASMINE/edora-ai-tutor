@@ -56,8 +56,12 @@ if ($selected_course && !in_array($selected_course, $teacher_course_ids, true)) 
 // edora_conversations (plugin fraîchement installé, migration non appliquée…)
 // provoque une erreur SQL fatale (dml_read_exception) au lieu d'un dashboard vide.
 // ══════════════════════════════════════════════════════════════════════════════
-$has_conversations = $DB->get_manager()->table_exists('edora_conversations');
+$has_conversations = true;
 
+// Sécurité : si aucun cours enseignant trouvé, on arrête
+if (empty($teacher_course_ids)) {
+    redirect(new moodle_url('/'), get_string('nopermissions', 'error'));
+}
 $courses_with_data   = [];
 $stats               = null;
 $heatmap_data        = [];
@@ -95,7 +99,7 @@ if ($has_conversations) {
     // 1. Statistiques globales du cours
     $stats = $DB->get_record_sql("
         SELECT
-            COUNT(DISTINCT ec.student_id)                          AS nb_etudiants,
+            COUNT(DISTINCT ec.user_id)                          AS nb_etudiants,
             COUNT(*)                                               AS nb_conversations,
             COUNT(CASE WHEN ec.student_level = 'debutant'      THEN 1 END) AS nb_debutants,
             COUNT(CASE WHEN ec.student_level = 'intermediaire' THEN 1 END) AS nb_intermediaires,
@@ -136,14 +140,14 @@ if ($has_conversations) {
     // 4. Alertes : étudiants bloqués (3+ conversations sur le même cours sans progression)
     $alertes_bloques = $DB->get_records_sql("
         SELECT
-            ec.student_id,
+            ec.user_id,
             COUNT(*) AS nb_conversations,
             MAX(ec.created_at) AS derniere_activite,
             ec.student_level
         FROM {edora_conversations} ec
         WHERE ec.course_id = :course_id
           AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-        GROUP BY ec.student_id, ec.student_level
+        GROUP BY ec.user_id, ec.student_level
         HAVING COUNT(*) >= 3 AND (ec.student_level = 'debutant' OR ec.student_level IS NULL)
         ORDER BY nb_conversations DESC
         LIMIT 10
@@ -153,7 +157,7 @@ if ($has_conversations) {
     $niveaux_distribution = $DB->get_records_sql("
         SELECT
             student_level,
-            COUNT(DISTINCT student_id) AS nb_etudiants
+            COUNT(DISTINCT user_id) AS nb_etudiants
         FROM {edora_conversations}
         WHERE course_id = :course_id
           AND student_level IS NOT NULL
@@ -532,10 +536,10 @@ html[data-theme="dark"] .edo-table-missing {
                 <?php endforeach; ?>
             </select>
         </form>
-        <div class="edo-refresh">
-            🕐 <?= date('H:i') ?>
-            <a href="?course_id=<?= $selected_course ?>" style="color:var(--edo-teal2);text-decoration:none;">↻ Rafraîchir</a>
-        </div>
+        <div class="edo-refresh" style="color:rgba(255,255,255,0.9);">
+    🕐 <?= date('H:i') ?>
+    <a href="?course_id=<?= $selected_course ?>" style="color:#fff;text-decoration:none;font-weight:600;">↻ Rafraîchir</a>
+</div>
     </div>
 </div>
 
@@ -585,7 +589,7 @@ html[data-theme="dark"] .edo-table-missing {
             <?php foreach ($alertes_bloques as $a): ?>
             <li class="edo-alert-item">
                 <span class="edo-alert-badge"><?= (int)$a->nb_conversations ?>x</span>
-                Étudiant #<?= substr(hash('sha256', (string)$a->student_id), 0, 8) ?>
+                Étudiant #<?= substr(hash('sha256', (string)$a->user_id), 0, 8) ?>
                 — Niveau : <strong><?= $a->student_level ?: 'Non évalué' ?></strong>
                 — Dernière activité : <?= date('d/m H:i', strtotime($a->derniere_activite)) ?>
             </li>
