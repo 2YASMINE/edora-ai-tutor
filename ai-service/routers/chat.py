@@ -591,7 +591,7 @@ async def get_conversations(user_id: int = 0, course_id: int = 0):
 @router.delete("/conversation/{conversation_id}")
 async def delete_conversation(conversation_id: str):
     """
-    Supprime tous les messages d'une conversation de la table edora_conversations.
+    Supprime tous les messages d'une conversation de la table mdl_edora_conversations.
 
     Args (path param):
         conversation_id: UUID de la conversation à supprimer.
@@ -607,7 +607,7 @@ async def delete_conversation(conversation_id: str):
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "DELETE FROM edora_conversations WHERE conversation_id = %s",
+            "DELETE FROM mdl_edora_conversations WHERE conversation_id = %s",
             (conversation_id,)
         )
         deleted = cursor.rowcount
@@ -617,3 +617,275 @@ async def delete_conversation(conversation_id: str):
         return {"success": True, "deleted_messages": deleted}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ENDPOINT : BARRE DE PROGRESSION MAÎTRISE
+# ══════════════════════════════════════════════════════════════════════════════
+
+class MasteryUpdateRequest(BaseModel):
+    user_id:  int
+    course_id: int
+    chunk_id:  str
+    is_correct: bool = True
+
+@router.get("/mastery")
+async def get_mastery(user_id: int, course_id: int):
+    """
+    Retourne la progression de maîtrise des concepts pour un étudiant.
+
+    Args (query params):
+        user_id:   ID Moodle de l'étudiant.
+        course_id: ID du cours Moodle.
+
+    Returns:
+        {"mastered": N, "total": M, "percent": X}
+    """
+    from services.history_service import get_connection
+    from services.chroma_service import get_client
+    chroma = get_client()
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT COUNT(DISTINCT chunk_id) as mastered
+            FROM mdl_edora_mastery
+            WHERE user_id = %s AND course_id = %s AND correct = 1
+        """, (user_id, course_id))
+        mastered = cursor.fetchone()["mastered"]
+
+        # Total concepts via ChromaDB
+        try:
+            from services.chroma_service import get_client
+            chroma = get_client()
+            collection = chroma.get_collection(f"course_{course_id}")
+            total = collection.count()
+        except Exception:
+            total = 0
+
+        percent = round((mastered / total * 100), 1) if total > 0 else 0
+        return {"mastered": mastered, "total": total, "percent": percent}
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@router.post("/mastery/update")
+async def update_mastery(request: MasteryUpdateRequest):
+    """
+    Enregistre une réponse correcte à un quiz (chunk maîtrisé).
+
+    Args (body JSON):
+        user_id, course_id, chunk_id, is_correct
+    """
+    from services.history_service import get_connection
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO mdl_edora_mastery (user_id, course_id, chunk_id, correct)
+VALUES (%s, %s, %s, %s)
+ON DUPLICATE KEY UPDATE correct = VALUES(correct)
+        """, (request.user_id, request.course_id, request.chunk_id, int(request.is_correct)))
+        conn.commit()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ENDPOINT : MIND MAP
+# ══════════════════════════════════════════════════════════════════════════════
+
+class MindMapRequest(BaseModel):
+    course_id:  int
+    student_id: int = 0
+
+
+@router.post("/mindmap")
+async def generate_mindmap(request: MindMapRequest):
+    """
+    Génère une Mind Map pédagogique depuis le contenu du cours via ChromaDB.
+
+    Nouveau pipeline (COURSE → RAG → GEMINI → MINDMAP) :
+    1. Récupère les chunks pertinents du cours via ChromaDB
+    2. Construit un prompt pédagogique pour Gemini
+    3. Gemini identifie concepts + relations + descriptions + importance
+    4. Retourne JSON structuré pour D3.js
+
+    Raises:
+        HTTPException 404: Aucun contenu de cours dans ChromaDB.
+        HTTPException 503: Erreur Gemini ou JSON invalide.
+    """
+    import json as _json
+    import re as _re
+
+    # ── Étape 1 : Récupérer le contenu du cours via ChromaDB ─────────────────
+    try:
+        query_embedding = get_embedding(
+            "concepts principaux définitions notions importantes résumé du cours"
+        )
+        chunks = search_similar_chunks(
+            course_id=request.course_id,
+            query_embedding=query_embedding,
+            n_results=12
+        )
+    except Exception as e:
+        logger.error("Erreur ChromaDB /mindmap : %s", str(e))
+        chunks = []
+
+    if not chunks:
+        raise HTTPException(
+            status_code=404,
+            detail="Aucun contenu de cours disponible. Importez d'abord des ressources dans le cours."
+        )
+
+    # ── Étape 2 : Construire le contexte depuis les chunks ───────────────────
+    course_content = ""
+    for i, chunk in enumerate(chunks[:12]):
+        text = chunk.get("text", "")
+        source = chunk.get("metadata", {}).get("source", "cours")
+        course_content += f"[Extrait {i+1} — {source}]\n{text}\n\n"
+
+    course_content = course_content[:8000]
+
+    # ── Étape 3 : Prompt pédagogique pour Gemini ─────────────────────────────
+    prompt = f"""Tu es un expert en pédagogie et en cartographie des connaissances.
+
+Analyse ce contenu de cours et génère une Mind Map pédagogique structurée.
+
+CONTENU DU COURS :
+{course_content}
+
+INSTRUCTIONS :
+Tu dois retourner UNIQUEMENT un objet JSON valide, sans aucun texte avant ou après, sans markdown, sans backticks.
+
+Structure JSON exacte à respecter :
+{{
+  "title": "Titre du cours en 3-5 mots",
+  "nodes": [
+    {{
+      "id": "root",
+      "label": "Concept central",
+      "type": "root",
+      "description": "Définition courte et claire du sujet principal (1-2 phrases).",
+      "importance": "high"
+    }},
+    {{
+      "id": "n1",
+      "label": "Concept principal",
+      "type": "main",
+      "description": "Explication courte de ce concept (1-2 phrases).",
+      "importance": "high"
+    }},
+    {{
+      "id": "n2",
+      "label": "Sous-concept",
+      "type": "sub",
+      "description": "Ce que cela signifie concrètement.",
+      "importance": "medium"
+    }},
+    {{
+      "id": "n3",
+      "label": "Détail",
+      "type": "detail",
+      "description": "Information complémentaire.",
+      "importance": "low"
+    }}
+  ],
+  "links": [
+    {{"source": "root", "target": "n1", "label": "comprend"}},
+    {{"source": "n1", "target": "n2", "label": "inclut"}},
+    {{"source": "n2", "target": "n3", "label": "exemple"}}
+  ]
+}}
+
+Règles strictes :
+- 1 seul noeud "root" (le concept central du cours)
+- Entre 2 et 4 noeuds "main" (concepts principaux seulement)
+- Entre 2 et 5 noeuds "sub" (sous-concepts)
+- Entre 1 et 4 noeuds "detail" (exemples ou définitions clés uniquement)
+- Total : entre 6 et 14 noeuds MAXIMUM — ne dépasse pas 14 noeuds
+- Labels courts : 2-3 mots maximum
+- Descriptions : 1 phrase courte maximum (moins de 15 mots)
+- importance : "high", "medium" ou "low"
+- Retourne UNIQUEMENT le JSON valide, rien d'autre avant ou après
+- N'utilise pas d'apostrophes dans les valeurs JSON
+"""
+
+    # ── Étape 4 : Appel Gemini DIRECT (sans ask_gemini pour éviter les prompts système) ──
+    raw = ""
+    try:
+        from google import genai as _genai
+        from google.genai import types as _types
+        _client = _genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        _model  = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        _resp   = _client.models.generate_content(
+            model=_model,
+            contents=prompt,
+            config=_types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=8192,
+                response_mime_type="application/json",
+            )
+        )
+        raw = _resp.text.strip() if _resp.text else ""
+
+        # Parsing robuste
+        raw = _re.sub(r"^```(?:json)?\s*", "", raw, flags=_re.MULTILINE)
+        raw = _re.sub(r"```\s*$",           "", raw, flags=_re.MULTILINE)
+        raw = raw.strip()
+
+        # Extraire le premier objet JSON si Gemini a ajouté du texte
+        brace_start = raw.find("{")
+        brace_end   = raw.rfind("}")
+        if brace_start >= 0 and brace_end > brace_start:
+            raw = raw[brace_start:brace_end + 1]
+
+        # Tentative 1 : parser directement
+        try:
+            graph = _json.loads(raw)
+        except _json.JSONDecodeError:
+            # Tentative 2 : nettoyer les caractères de contrôle invisibles
+            raw_clean = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', raw)
+            # Tentative 3 : truncate au dernier noeud valide si JSON tronqué
+            try:
+                graph = _json.loads(raw_clean)
+            except _json.JSONDecodeError:
+                # Tentative 4 : extraire avec json repair manuel
+                # Couper après le dernier lien complet
+                last_bracket = raw_clean.rfind(']')
+                last_brace   = raw_clean.rfind('}')
+                if last_bracket > 0 and last_brace > last_bracket:
+                    raw_clean = raw_clean[:last_brace + 1]
+                elif last_bracket > 0:
+                    # Fermer le JSON manuellement
+                    raw_clean = raw_clean[:last_bracket + 1] + '}}'
+                graph = _json.loads(raw_clean)
+
+        if "nodes" not in graph or "links" not in graph:
+            raise ValueError("Clés manquantes dans le JSON")
+
+        logger.info(
+            "MindMap cours générée — course=%s noeuds=%d liens=%d",
+            request.course_id, len(graph["nodes"]), len(graph["links"])
+        )
+
+        return {
+            "success": True,
+            "title":   graph.get("title", "Mind Map du cours"),
+            "nodes":   graph["nodes"],
+            "links":   graph["links"]
+        }
+
+    except _json.JSONDecodeError as e:
+        logger.error("MindMap JSON invalide : %s | raw: %.300s", str(e), raw)
+        raise HTTPException(status_code=503, detail="Réponse Gemini non parsable en JSON.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Erreur /mindmap : %s", str(e))
+        raise HTTPException(status_code=503, detail=str(e))

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Edora — Mind Map du cours</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+:root {
+    --bg:#f0f7f6; --bg2:#e8f4f3; --surface:#ffffff; --surface2:#f8fafb;
+    --border:#e2e8f0; --text:#1e293b; --text-muted:#64748b; --text-light:#94a3b8;
+    --teal:#0a9396; --teal-dark:#005f73; --teal-light:#94d2bd;
+    --teal-pale:rgba(10,147,150,.1); --teal-glow:rgba(10,147,150,.22);
+    --amber:#d97706; --amber-pale:rgba(217,119,6,.1); --amber-glow:rgba(217,119,6,.18);
+    --purple:#7c3aed; --purple-pale:rgba(124,58,237,.08); --purple-glow:rgba(124,58,237,.16);
+    --node-root-fill:#005f73; --node-root-stroke:#0a9396; --node-root-text:#ffffff;
+    --node-main-fill:#ffffff; --node-main-stroke:#0a9396; --node-main-text:#005f73;
+    --node-sub-fill:#ffffff;  --node-sub-stroke:#d97706;  --node-sub-text:#92400e;
+    --node-det-fill:#ffffff;  --node-det-stroke:#7c3aed;  --node-det-text:#5b21b6;
+    --link-color:rgba(10,147,150,.3); --link-label:#b0bec5; --grid:rgba(10,147,150,.05);
+    --shadow:0 4px 20px rgba(0,0,0,.1); --shadow-sm:0 2px 8px rgba(0,0,0,.06);
+}
+[data-theme="dark"] {
+    --bg:#060d16; --bg2:#0a1520; --surface:#0f1c2a; --surface2:#162330;
+    --border:rgba(255,255,255,.08); --text:#e2e8f5; --text-muted:#64748b; --text-light:#2d3748;
+    --teal-pale:rgba(10,147,150,.14); --teal-glow:rgba(10,147,150,.38);
+    --amber-pale:rgba(217,119,6,.14); --amber-glow:rgba(217,119,6,.32);
+    --purple-pale:rgba(124,58,237,.14); --purple-glow:rgba(124,58,237,.32);
+    --node-root-fill:#005f73; --node-root-stroke:#0a9396; --node-root-text:#fff;
+    --node-main-fill:rgba(10,147,150,.12); --node-main-stroke:#0a9396; --node-main-text:#94d2bd;
+    --node-sub-fill:rgba(217,119,6,.12);   --node-sub-stroke:#f59e0b;  --node-sub-text:#fcd34d;
+    --node-det-fill:rgba(124,58,237,.12);  --node-det-stroke:#a78bfa;  --node-det-text:#c4b5fd;
+    --link-color:rgba(10,147,150,.28); --link-label:#374151; --grid:rgba(10,147,150,.04);
+    --shadow:0 4px 20px rgba(0,0,0,.4); --shadow-sm:0 2px 8px rgba(0,0,0,.3);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden;transition:background .3s,color .3s}
+.mm-header{position:fixed;top:0;left:0;right:0;height:58px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 20px;z-index:100;box-shadow:var(--shadow-sm);transition:background .3s,border-color .3s}
+.mm-logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--teal-dark),var(--teal));display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.mm-title-wrap{flex:1;min-width:0}
+.mm-title{font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mm-sub{font-size:11px;color:var(--text-muted);margin-top:1px}
+.mm-controls{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.mm-btn{height:32px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text-muted);font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.mm-btn:hover{background:var(--teal-pale);border-color:var(--teal);color:var(--teal)}
+.mm-btn.close-btn:hover{background:rgba(239,68,68,.08);border-color:#ef4444;color:#ef4444}
+.mm-btn.theme{min-width:36px;padding:0 10px}
+.mm-legend{position:fixed;bottom:20px;left:20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;z-index:100;display:flex;flex-direction:column;gap:8px;box-shadow:var(--shadow);transition:background .3s,border-color .3s}
+.mm-leg-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted)}
+.mm-leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;border:2px solid transparent}
+#mm-info{position:fixed;top:76px;right:20px;width:280px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;z-index:100;box-shadow:var(--shadow);display:none;flex-direction:column;gap:10px;transition:background .3s,border-color .3s;animation:panIn .2s ease-out}
+@keyframes panIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
+#mm-info.open{display:flex}
+.mm-info-x{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-muted);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.mm-info-x:hover{background:rgba(239,68,68,.08);color:#ef4444;border-color:#ef4444}
+.mm-info-badge{font-size:9px;font-weight:700;letter-spacing:.06em;padding:2px 7px;border-radius:999px;width:fit-content}
+.mm-info-badge.root,.mm-info-badge.main{background:var(--teal-pale);color:var(--teal-dark)}
+.mm-info-badge.sub{background:var(--amber-pale);color:var(--amber)}
+.mm-info-badge.detail{background:var(--purple-pale);color:var(--purple)}
+.mm-info-lbl{font-size:15px;font-weight:700;color:var(--text)}
+.mm-info-desc{font-size:12px;color:var(--text-muted);line-height:1.6}
+.mm-ask-btn{height:34px;border-radius:8px;border:none;background:linear-gradient(135deg,var(--teal-dark),var(--teal));color:#fff;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px;transition:opacity .2s}
+.mm-ask-btn:hover{opacity:.88}
+#mm-tip{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text);pointer-events:none;opacity:0;transition:opacity .15s;z-index:200;box-shadow:var(--shadow-sm);max-width:200px}
+.mm-hint{position:fixed;bottom:20px;right:20px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 14px;font-size:11px;color:var(--text-muted);z-index:100;box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:6px}
+#mm-svg{position:fixed;top:58px;left:0;right:0;bottom:0;width:100%;height:calc(100vh - 58px);z-index:1;cursor:grab}
+#mm-svg:active{cursor:grabbing}
+#mm-load{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:var(--bg);z-index:300}
+.mm-spin{width:44px;height:44px;border:3px solid var(--teal-pale);border-top-color:var(--teal);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.mm-load-txt{font-size:13px;color:var(--text-muted)}
+#mm-err{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg);z-index:300;text-align:center;padding:40px}
+#mm-err .ico{font-size:48px}
+#mm-err h2{color:#ef4444;font-size:18px}
+#mm-err p{color:var(--text-muted);font-size:13px;max-width:400px;line-height:1.6}
+#mm-err .retry{height:38px;padding:0 20px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--teal-dark),var(--teal));color:#fff;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px}
+</style>
+</head>
+<body>
+
+<div id="mm-load">
+    <div class="mm-spin"></div>
+    <div class="mm-load-txt">Analyse du cours en cours…</div>
+</div>
+
+<div id="mm-err">
+    <div class="ico">⚠️</div>
+    <h2>Impossible de générer la Mind Map</h2>
+    <p id="mm-err-msg">Vérifiez que des ressources ont été importées dans ce cours.</p>
+    <button class="retry" onclick="loadMindMap()">↺ Réessayer</button>
+</div>
+
+<div class="mm-header">
+    <img id="mm-logo-img" src="" alt="Edo" style="width:34px;height:34px;border-radius:10px;object-fit:contain;flex-shrink:0;">
+    <div class="mm-title-wrap">
+        <div class="mm-title" id="mm-title">Mind Map — Chargement…</div>
+        <div class="mm-sub"   id="mm-sub">Carte visuelle du cours</div>
+    </div>
+    <div class="mm-controls">
+        <button class="mm-btn"        onclick="resetZoom()">⊙ Recentrer</button>
+        <button class="mm-btn theme"  id="mm-theme-btn" onclick="toggleTheme()">🌙</button>
+        <button class="mm-btn close-btn" onclick="window.close()">✕ Fermer</button>
+    </div>
+</div>
+
+<svg id="mm-svg"></svg>
+<div id="mm-tip"></div>
+
+<div id="mm-info">
+    <button class="mm-info-x" onclick="closePanel()">✕</button>
+    <div class="mm-info-badge" id="mm-ib">CONCEPT</div>
+    <div class="mm-info-lbl"   id="mm-il">—</div>
+    <div class="mm-info-desc"  id="mm-id">—</div>
+    <button class="mm-ask-btn" id="mm-ask">💬 Explorer dans le chat</button>
+</div>
+
+<div class="mm-legend">
+    <div class="mm-leg-item"><div class="mm-leg-dot" style="background:#005f73;border-color:#0a9396"></div>Concept central</div>
+    <div class="mm-leg-item"><div class="mm-leg-dot" style="background:transparent;border-color:#0a9396"></div>Concept principal</div>
+    <div class="mm-leg-item"><div class="mm-leg-dot" style="background:transparent;border-color:#d97706"></div>Sous-concept</div>
+    <div class="mm-leg-item"><div class="mm-leg-dot" style="background:transparent;border-color:#7c3aed"></div>Détail</div>
+</div>
+
+<div class="mm-hint">💡 Cliquez sur un nœud pour la description</div>
+
+<script>
+var params    = new URLSearchParams(window.location.search);
+var courseId  = parseInt(params.get('course_id')  || '0');
+var studentId = parseInt(params.get('student_id') || '0');
+var apiUrl    = params.get('api_url') || 'http://localhost:8000';
+
+// ── Thème ────────────────────────────────────────────────────────────────────
+var TKEY = 'edora_mm_theme';
+function initTheme() {
+    var t = localStorage.getItem(TKEY) === 'dark' ? 'dark' : 'light';
+    applyTheme(t);
+}
+function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    document.getElementById('mm-theme-btn').textContent = t === 'dark' ? '☀️' : '🌙';
+    localStorage.setItem(TKEY, t);
+}
+function toggleTheme() {
+    applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+}
+
+// ── Config nœuds ─────────────────────────────────────────────────────────────
+function ns(type, imp) {
+    return {
+        root:   { r:52, fs:12, fw:700, ic:'🧠' },
+        main:   { r:38, fs:11, fw:600, ic: imp === 'high' ? '⭐' : '📌' },
+        sub:    { r:30, fs:10, fw:500, ic:'📎' },
+        detail: { r:22, fs:9,  fw:400, ic:'•'  }
+    }[type] || { r:16, fs:10, fw:400, ic:'•' };
+}
+
+// ── D3 globals ────────────────────────────────────────────────────────────────
+var svg, sim, zoom, gMain;
+
+// ── Chargement ────────────────────────────────────────────────────────────────
+async function loadMindMap() {
+    document.getElementById('mm-load').style.display = 'flex';
+    document.getElementById('mm-err').style.display  = 'none';
+    closePanel();
+    try {
+        var r = await fetch(apiUrl + '/mindmap', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({course_id: courseId, student_id: studentId})
+        });
+        var d = await r.json();
+        if (!r.ok || !d.success) { showErr(d.detail || 'Erreur ' + r.status); return; }
+        document.getElementById('mm-load').style.display = 'none';
+        document.getElementById('mm-title').textContent = d.title || 'Mind Map';
+        document.getElementById('mm-sub').textContent   = d.nodes.length + ' concepts · ' + d.links.length + ' relations';
+        render(d);
+    } catch(e) {
+        showErr('Impossible de contacter le serveur IA (' + apiUrl + ').');
+    }
+}
+
+function showErr(msg) {
+    document.getElementById('mm-load').style.display = 'none';
+    var el = document.getElementById('mm-err');
+    el.style.display = 'flex';
+    document.getElementById('mm-err-msg').textContent = msg;
+}
+
+// ── Rendu D3 ──────────────────────────────────────────────────────────────────
+function render(data) {
+    d3.select('#mm-svg').selectAll('*').remove();
+    var W = window.innerWidth, H = window.innerHeight - 58;
+    svg = d3.select('#mm-svg').attr('width', W).attr('height', H);
+    var defs = svg.append('defs');
+    defs.append('marker').attr('id','arr').attr('viewBox','0 -4 8 8')
+        .attr('refX',8).attr('refY',0).attr('markerWidth',5).attr('markerHeight',5)
+        .attr('orient','auto').append('path').attr('d','M0,-4L8,0L0,4')
+        .attr('fill','rgba(10,147,150,.4)');
+
+    zoom = d3.zoom().scaleExtent([.15,5]).on('zoom', function(e){ gMain.attr('transform', e.transform); });
+    svg.call(zoom);
+    gMain = svg.append('g');
+
+    // Grille
+    var g = gMain.append('g');
+    for(var xi=-W*3;xi<W*4;xi+=50) g.append('line').attr('x1',xi).attr('y1',-H*3).attr('x2',xi).attr('y2',H*4).attr('stroke','var(--grid)').attr('stroke-width',1);
+    for(var yi=-H*3;yi<H*4;yi+=50) g.append('line').attr('x1',-W*3).attr('y1',yi).attr('x2',W*4).attr('y2',yi).attr('stroke','var(--grid)').attr('stroke-width',1);
+
+    sim = d3.forceSimulation(data.nodes)
+        .force('link', d3.forceLink(data.links).id(function(d){return d.id;}).distance(function(d){
+            var s=d.source.type||'detail',t=d.target.type||'detail';
+            if(s==='root'||t==='root') return 165; if(s==='main'||t==='main') return 125;
+            if(s==='sub' ||t==='sub')  return 85; return 60;
+        }).strength(.5))
+        .force('charge', d3.forceManyBody().strength(function(d){
+            return d.type==='root'?-900:d.type==='main'?-450:d.type==='sub'?-220:-110;
+        }))
+        .force('center', d3.forceCenter(W/2, H/2))
+        .force('collision', d3.forceCollide().radius(function(d){ return ns(d.type,d.importance).r+26; }))
+        .alphaDecay(.025);
+
+    // Liens
+    var lg = gMain.append('g');
+    var ll = lg.selectAll('line').data(data.links).enter().append('line')
+        .attr('stroke','var(--link-color)')
+        .attr('stroke-width', function(d){ var s=d.source.type||d.source; return (s==='root'||s==='main')?2:1.5; })
+        .attr('stroke-dasharray','5,4').attr('marker-end','url(#arr)');
+    var lt = lg.selectAll('text').data(data.links).enter().append('text')
+        .attr('font-size',9).attr('fill','var(--link-label)').attr('text-anchor','middle')
+        .text(function(d){ return d.label||''; });
+
+    // Nœuds
+    var ng = gMain.append('g');
+    var ne = ng.selectAll('g').data(data.nodes).enter().append('g').style('cursor','pointer')
+        .call(d3.drag()
+            .on('start',function(e,d){ if(!e.active) sim.alphaTarget(.3).restart(); d.fx=d.x;d.fy=d.y; })
+            .on('drag', function(e,d){ d.fx=e.x;d.fy=e.y; })
+            .on('end',  function(e,d){ if(!e.active) sim.alphaTarget(0); d.fx=null;d.fy=null; })
+        )
+        .on('click', onNodeClick)
+        .on('mouseover', onOver)
+        .on('mouseout',  onOut);
+
+    // Halo
+    ne.append('circle')
+        .attr('r', function(d){ return ns(d.type,d.importance).r+14; })
+        .attr('fill', function(d){ return d.type==='root'?'var(--teal-glow)':d.type==='main'?'var(--teal-glow)':d.type==='sub'?'var(--amber-glow)':'var(--purple-glow)'; })
+        .attr('opacity', function(d){ return d.type==='root'?.35:.18; });
+
+    // Cercle principal
+    ne.append('circle')
+        .attr('r', function(d){ return ns(d.type,d.importance).r; })
+        .attr('fill', function(d){
+            return d.type==='root'?'var(--node-root-fill)':d.type==='main'?'var(--node-main-fill)':d.type==='sub'?'var(--node-sub-fill)':'var(--node-det-fill)';
+        })
+        .attr('stroke', function(d){
+            return d.type==='root'?'var(--node-root-stroke)':d.type==='main'?'var(--node-main-stroke)':d.type==='sub'?'var(--node-sub-stroke)':'var(--node-det-stroke)';
+        })
+        .attr('stroke-width', function(d){ return d.type==='root'?3:d.importance==='high'?2.5:1.5; });
+
+    // Icône
+    ne.append('text').attr('text-anchor','middle').attr('dominant-baseline','central')
+        .attr('dy', function(d){ var r=ns(d.type,d.importance).r; return d.type==='detail'?'0':'-'+Math.round(r*.28); })
+        .attr('font-size', function(d){ return d.type==='root'?'20':d.type==='main'?'14':d.type==='sub'?'11':'10'; })
+        .text(function(d){ return ns(d.type,d.importance).ic; });
+
+    // Label
+    ne.append('text').attr('text-anchor','middle').attr('dominant-baseline','central')
+        .attr('dy', function(d){ var r=ns(d.type,d.importance).r; return d.type==='detail'?'0':Math.round(r*.35)+'px'; })
+        .attr('font-size', function(d){ return ns(d.type,d.importance).fs; })
+        .attr('font-weight', function(d){ return ns(d.type,d.importance).fw; })
+        .attr('fill', function(d){
+            return d.type==='root'?'var(--node-root-text)':d.type==='main'?'var(--node-main-text)':d.type==='sub'?'var(--node-sub-text)':'var(--node-det-text)';
+        })
+        .attr('pointer-events','none')
+        .each(function(d) {
+        var lbl = d.label || '';
+        var r   = ns(d.type, d.importance).r;
+        var maxChars = Math.floor(r / 4.2);
+        var line1 = lbl.length > maxChars ? lbl.substring(0, maxChars) : lbl;
+        var line2 = lbl.length > maxChars ? lbl.substring(maxChars, maxChars * 2) : '';
+        var el = d3.select(this);
+        el.text('');
+        el.append('tspan').attr('x', 0).attr('dy', line2 ? '-0.3em' : '0').text(line1);
+        if (line2) el.append('tspan').attr('x', 0).attr('dy', '1.1em').text(line2.length > maxChars ? line2.substring(0, maxChars-1) + '…' : line2);
+    });
+
+    sim.on('tick', function(){
+        ll.attr('x1',function(d){return d.source.x;}).attr('y1',function(d){return d.source.y;})
+          .attr('x2',function(d){return d.target.x;}).attr('y2',function(d){return d.target.y;});
+        lt.attr('x',function(d){return (d.source.x+d.target.x)/2;})
+          .attr('y',function(d){return (d.source.y+d.target.y)/2-7;});
+        ne.attr('transform',function(d){return 'translate('+d.x+','+d.y+')';});
+    });
+
+    ne.attr('opacity',0).transition().duration(500).delay(function(d,i){return i*35;}).attr('opacity',1);
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+var tip = document.getElementById('mm-tip');
+function onOver(event, d) {
+    tip.style.opacity='1'; tip.style.left=(event.clientX+14)+'px'; tip.style.top=(event.clientY-8)+'px';
+    tip.textContent = d.label||'';
+    d3.select(this).select('circle:nth-child(2)').transition().duration(120)
+        .attr('stroke-width', d.type==='root'?4:3);
+}
+function onOut(event, d) {
+    tip.style.opacity='0';
+    d3.select(this).select('circle:nth-child(2)').transition().duration(120)
+        .attr('stroke-width', d.type==='root'?3:d.importance==='high'?2.5:1.5);
+}
+
+// ── Panneau description ───────────────────────────────────────────────────────
+var curNode = null;
+function onNodeClick(event, d) {
+    curNode = d;
+    var badges = {root:'CONCEPT CENTRAL', main:'CONCEPT PRINCIPAL', sub:'SOUS-CONCEPT', detail:'DÉTAIL'};
+    var ib = document.getElementById('mm-ib');
+    ib.textContent = badges[d.type]||'CONCEPT';
+    ib.className   = 'mm-info-badge ' + (d.type||'detail');
+    document.getElementById('mm-il').textContent = d.label||'—';
+    document.getElementById('mm-id').textContent = d.description||'Aucune description disponible.';
+    document.getElementById('mm-ask').onclick = function(){ askNode(d); };
+    document.getElementById('mm-info').classList.add('open');
+}
+function closePanel() {
+    document.getElementById('mm-info').classList.remove('open');
+    curNode = null;
+}
+function askNode(d) {
+    var q = 'Explique-moi ' + (d.label||'ce concept') + ' dans le cadre de ce cours.';
+    var btn = document.getElementById('mm-ask');
+    if (window.opener && !window.opener.closed) {
+        try {
+            window.opener.postMessage({type:'EDO_MINDMAP_CLICK', question:q}, '*');
+            btn.textContent = '✅ Envoyé dans le chat !';
+            setTimeout(function(){ btn.innerHTML = '💬 Explorer dans le chat'; }, 2000);
+        } catch(e) { fallbackCopy(q, btn); }
+    } else { fallbackCopy(q, btn); }
+}
+function fallbackCopy(q, btn) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(q);
+        btn.textContent = '📋 Copié !';
+        setTimeout(function(){ btn.innerHTML = '💬 Explorer dans le chat'; }, 2000);
+    }
+}
+
+// ── Contrôles ─────────────────────────────────────────────────────────────────
+function resetZoom() {
+    svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+}
+window.addEventListener('resize', function(){
+    var W=window.innerWidth, H=window.innerHeight-58;
+    if(svg){svg.attr('width',W).attr('height',H);}
+    if(sim){sim.force('center',d3.forceCenter(W/2,H/2));sim.alpha(.05).restart();}
+});
+document.getElementById('mm-svg').addEventListener('click', function(e){
+    if(e.target.tagName==='svg'||e.target.tagName==='line') closePanel();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+// Avatar : construire l'URL depuis api_url (http://localhost:8000 → localhost:8082)
+(function() {
+    // L'avatar est dans Moodle — on extrait le wwwroot depuis l'URL courante
+    var wwwroot = window.location.origin;
+    var avatarUrl = wwwroot + '/blocks/tutor_ai/pix/edo_avatar.png';
+    var logoImg = document.getElementById('mm-logo-img');
+    if (logoImg) {
+        logoImg.src = avatarUrl;
+        logoImg.onerror = function() {
+            // Fallback emoji si image absente
+            var parent = logoImg.parentNode;
+            var div = document.createElement('div');
+            div.className = 'mm-logo';
+            div.style.cssText = 'width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--teal-dark),var(--teal));display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;';
+            div.textContent = '🦉';
+            parent.replaceChild(div, logoImg);
+        };
+    }
+})();
+initTheme();
+loadMindMap();
+</script>
+</body>
+</html>

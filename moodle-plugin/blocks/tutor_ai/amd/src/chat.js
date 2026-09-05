@@ -389,7 +389,8 @@
         file:    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
         chevron: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>',
         moon:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
-        card:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'
+        card:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+        mindmap: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="3" cy="5" r="2"/><circle cx="21" cy="5" r="2"/><circle cx="3" cy="19" r="2"/><circle cx="21" cy="19" r="2"/><line x1="5" y1="6" x2="10" y2="11"/><line x1="19" y1="6" x2="14" y2="11"/><line x1="5" y1="18" x2="10" y2="13"/><line x1="19" y1="18" x2="14" y2="13"/></svg>'
     };
 
     // SVG flèche bas pour le toggle raccourcis
@@ -534,6 +535,86 @@
     // ══════════════════════════════════════════════════════════
     // FLASHCARDS — Game UI
     // ══════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════
+// MIND MAP
+// ══════════════════════════════════════════════════════════
+function triggerMindMap(apiUrl, courseId) {
+
+    // Nouveau principe : Mind Map du COURS (pas de conversation requise)
+    // mindmap.html appelle directement /mindmap avec course_id + student_id
+
+    var mmPageUrl =
+        M.cfg.wwwroot + '/blocks/tutor_ai/mindmap.html'
+        + '?course_id='   + encodeURIComponent(courseId)
+        + '&student_id='  + encodeURIComponent(studentId)
+        + '&api_url='     + encodeURIComponent(apiUrl);
+
+    var messages = document.getElementById('edo-messages');
+    if (!messages) {
+        window.open(mmPageUrl, '_blank', 'noopener');
+        return;
+    }
+
+    var row = document.createElement('div');
+    row.className = 'edo-bot-row';
+
+    var av = document.createElement('div');
+    av.className = 'edo-bot-avatar';
+    av.innerHTML = AVATAR_IMG_SM;
+    row.appendChild(av);
+
+    var bubble = document.createElement('div');
+    bubble.className = 'edo-bubble edo-bubble--bot';
+
+    bubble.innerHTML =
+        '<div style="display:flex;flex-direction:column;gap:12px;">' +
+
+            '<div style="font-size:13px;font-weight:600;">' +
+                '🗺️ Votre Mind Map est prête !' +
+            '</div>' +
+
+            '<div style="font-size:12px;color:var(--edo-text-muted);line-height:1.6;">' +
+                'Visualisation interactive des concepts clés du cours.' +
+                ' Cliquez sur un concept pour l\'explorer dans le chat.' +
+            '</div>' +
+
+            '<a href="' + mmPageUrl + '" ' +
+                'target="_blank" ' +
+                'style="display:inline-flex;align-items:center;gap:8px;' +
+                'padding:10px 18px;border-radius:10px;' +
+                'background:linear-gradient(135deg,#005f73,#0a9396);' +
+                'color:#fff;font-size:12px;font-weight:700;' +
+                'text-decoration:none;width:fit-content;' +
+                'box-shadow:0 4px 14px rgba(0,95,115,0.4);">' +
+                '🚀 Ouvrir la Mind Map interactive' +
+            '</a>' +
+
+            '<div class="edo-timestamp">' +
+                getTime() +
+            '</div>' +
+
+        '</div>';
+
+    row.appendChild(bubble);
+    messages.appendChild(row);
+    messages.scrollTop = messages.scrollHeight;
+
+    // Ouvrir dans un nouvel onglet — noopener SANS noreferrer
+    // pour garder window.opener accessible depuis mindmap.html
+    window.open(mmPageUrl, '_blank', 'noopener');
+
+    // Écouter les clics sur les nœuds depuis mindmap.html
+    window.addEventListener('message', function(evt) {
+        if (
+            evt.data &&
+            evt.data.type === 'EDO_MINDMAP_CLICK' &&
+            typeof evt.data.question === 'string'
+        ) {
+            sendQuestion(evt.data.question, apiUrl, courseId);
+        }
+    });
+}
+
     async function triggerFlashcards(apiUrl, courseId) {
         var loadingRow = appendMessage('', 'bot', true);
         try {
@@ -971,6 +1052,26 @@
 
     async function loadStudentLevel(apiUrl,courseId){try{var resp=await fetch(apiUrl+'/student-level?student_id='+studentId+'&course_id='+courseId);if(!resp.ok)return;var data=await resp.json();if(data.level){studentLevel=data.level;levelQuizDone=true;}else if(data.quiz_done){levelQuizDone=true;}}catch(e){console.warn('[Edora] Erreur chargement niveau :',e);}}
 
+    async function loadMastery(apiUrl, courseId) {
+        try {
+            var resp = await fetch(apiUrl + '/mastery?user_id=' + studentId + '&course_id=' + courseId);
+            if (!resp.ok) return;
+            var data = await resp.json();
+            updateMasteryBar(data.mastered, data.total, data.percent);
+        } catch(e) { console.warn('[Edora] Erreur chargement mastery :', e); }
+    }
+
+    function updateMasteryBar(mastered, total, percent) {
+        var bar   = document.getElementById('edo-mastery-bar');
+        var fill  = document.getElementById('edo-mastery-fill');
+        var label = document.getElementById('edo-mastery-label');
+        if (!bar || !fill || !label) return;
+        if (total === 0) { bar.style.display = 'none'; return; }
+        bar.style.display = 'block';
+        label.textContent = mastered + '/' + total + ' concepts';
+        fill.style.width  = percent + '%';
+    }
+
     function showLevelBadge(level){var existing=document.getElementById('edo-level-badge');if(existing)existing.remove();var labels={debutant:{text:'🌱 Débutant',color:'#059669',bg:'#d1fae5'},intermediaire:{text:'📘 Intermédiaire',color:'#0a9396',bg:'#cffafe'},avance:{text:'🚀 Avancé',color:'#7c3aed',bg:'#ede9fe'}};var info=labels[level]||{text:level,color:'#6b7280',bg:'#f3f4f6'};var badge=document.createElement('div');badge.id='edo-level-badge';badge.style.cssText='display:flex;align-items:center;gap:6px;margin:6px 44px 2px;padding:5px 10px;border-radius:20px;font-size:11.5px;font-weight:600;color:'+info.color+';background:'+info.bg+';width:fit-content';badge.textContent=info.text;var messages=document.getElementById('edo-messages');if(messages)messages.appendChild(badge);}
 
     function renderLevelQuiz(quizText,apiUrl,courseId,convId,onComplete){var messages=document.getElementById('edo-messages');if(!messages)return;var introRow=document.createElement('div');introRow.classList.add('edo-bot-row');var introAv=document.createElement('div');introAv.className='edo-bot-avatar';introAv.innerHTML=AVATAR_IMG_SM;introRow.appendChild(introAv);var introBubble=document.createElement('div');introBubble.classList.add('edo-bubble','edo-bubble--bot');introBubble.style.cssText='background:linear-gradient(135deg,#e0f7fa,#f0fdf4);border:1.5px solid #0a9396;';introBubble.innerHTML='🎯 <strong>Avant de commencer, faisons connaissance !</strong><br>Pour que je puisse adapter mes explications à ton niveau, réponds à ce petit quiz de <strong>10 questions</strong> sur le cours.<br><span style="font-size:11px;color:#6b7280;">Cela ne prend que 2 minutes — promis ! 😊</span><div class="edo-timestamp">'+getTime()+'</div>';introRow.appendChild(introBubble);messages.appendChild(introRow);messages.scrollTop=messages.scrollHeight;
@@ -985,7 +1086,7 @@
 
     async function checkAndTriggerLevelQuiz(question,apiUrl,courseId,convId,onProceed){if(levelQuizDone||levelQuizPending||isSmallTalk(question)){onProceed();return;}levelQuizPending=true;try{var resp=await fetch(apiUrl+'/level-quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({course_id:courseId,student_id:studentId,conversation_id:convId})});if(!resp.ok){levelQuizPending=false;onProceed();return;}var data=await resp.json();if(data.already_done){studentLevel=data.level;levelQuizDone=true;levelQuizPending=false;if(studentLevel)showLevelBadge(studentLevel);onProceed();return;}renderLevelQuiz(data.quiz,apiUrl,courseId,convId,function(correct,total){onProceed();});}catch(e){console.warn('[Edora] Erreur quiz niveau :',e);levelQuizPending=false;onProceed();}}
 
-    async function sendQuestion(question,apiUrl,courseId){var sendBtn=document.getElementById('edo-send');var input=document.getElementById('edo-input');lastQuestion=question;lastApiUrl=apiUrl;lastCourseId=courseId;sendBtn.disabled=true;input.disabled=true;clearSuggestions();if(window.speechSynthesis&&window.speechSynthesis.speaking)window.speechSynthesis.cancel();if(currentTtsBtn){resetTtsBtn(currentTtsBtn);currentTtsBtn=null;}appendMessage(question,'user');conversationHistory.push({role:'user',content:question});await checkAndTriggerLevelQuiz(question,apiUrl,courseId,conversationId,async function(){var loadingRow=appendMessage('','bot',true);try{var response=await fetch(apiUrl+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,course_id:courseId,student_id:studentId,conversation_id:conversationId,conversation_history:conversationHistory.slice(-6)})});loadingRow.remove();if(!response.ok)throw new Error('HTTP '+response.status);var data=await response.json();if(data.conversation_id){conversationId=data.conversation_id;localStorage.setItem('edo_conv_'+courseId,conversationId);}var msgEl=document.getElementById('edo-messages');var isQuiz=false;if(data.is_quiz_json===true)isQuiz=renderJsonQuiz(data.answer,msgEl);if(!isQuiz)isQuiz=renderInteractiveQuiz(data.answer,msgEl);if(!isQuiz)appendMessage(data.answer,'bot');conversationHistory.push({role:'assistant',content:data.answer});if(data.sources&&data.sources.length>0&&data.found_in_course)renderSources(data.sources,msgEl);if(data.follow_up_questions&&data.follow_up_questions.length>0)showSuggestions(data.follow_up_questions,apiUrl,courseId);}catch(error){if(document.querySelector('.edo-bubble--loading'))document.querySelector('.edo-bubble--loading').closest('.edo-bot-row').remove();appendMessage('⚠️ Je n\'arrive pas à joindre le serveur. Vérifie ta connexion et réessaie.','bot');console.error('[Edora Chat] Erreur fetch:',error);}finally{sendBtn.disabled=false;input.disabled=false;input.focus();}});if(levelQuizPending){sendBtn.disabled=false;input.disabled=false;}}
+    async function sendQuestion(question,apiUrl,courseId){var sendBtn=document.getElementById('edo-send');var input=document.getElementById('edo-input');lastQuestion=question;lastApiUrl=apiUrl;lastCourseId=courseId;sendBtn.disabled=true;input.disabled=true;clearSuggestions();if(window.speechSynthesis&&window.speechSynthesis.speaking)window.speechSynthesis.cancel();if(currentTtsBtn){resetTtsBtn(currentTtsBtn);currentTtsBtn=null;}appendMessage(question,'user');conversationHistory.push({role:'user',content:question});await checkAndTriggerLevelQuiz(question,apiUrl,courseId,conversationId,async function(){var loadingRow=appendMessage('','bot',true);try{var response=await fetch(apiUrl+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,course_id:courseId,student_id:studentId,conversation_id:conversationId,conversation_history:conversationHistory.slice(-6)})});loadingRow.remove();if(!response.ok)throw new Error('HTTP '+response.status);var data=await response.json();if(data.conversation_id){conversationId=data.conversation_id;localStorage.setItem('edo_conv_'+courseId,conversationId);}var msgEl=document.getElementById('edo-messages');var isQuiz=false;if(data.is_quiz_json===true)isQuiz=renderJsonQuiz(data.answer,msgEl);if(!isQuiz)isQuiz=renderInteractiveQuiz(data.answer,msgEl);if(!isQuiz)appendMessage(data.answer,'bot');conversationHistory.push({role:'assistant',content:data.answer});if(data.sources&&data.sources.length>0&&data.found_in_course)renderSources(data.sources,msgEl);if(data.follow_up_questions&&data.follow_up_questions.length>0)showSuggestions(data.follow_up_questions,apiUrl,courseId);if(data.is_quiz_json===true){setTimeout(function(){loadMastery(apiUrl,courseId);},1500);}}catch(error){if(document.querySelector('.edo-bubble--loading'))document.querySelector('.edo-bubble--loading').closest('.edo-bot-row').remove();appendMessage('⚠️ Je n\'arrive pas à joindre le serveur. Vérifie ta connexion et réessaie.','bot');console.error('[Edora Chat] Erreur fetch:',error);}finally{sendBtn.disabled=false;input.disabled=false;input.focus();}});if(levelQuizPending){sendBtn.disabled=false;input.disabled=false;}}
 
     function buildFloatingUI(apiUrl, courseId) {
         var fab = document.createElement('button');
@@ -1005,6 +1106,14 @@
                 '<div class="edo-header__info">' +
                     '<span class="edo-name">Edora AI Tutor<span class="edo-name-badge">BETA</span></span>' +
                     '<span class="edo-subtitle"><span class="edo-dot edo-dot--green"></span>Votre assistant intelligent pour vos cours</span>' +
+                    '<div id="edo-mastery-bar" style="margin-top:4px;display:none;width:100%;">' +
+                        '<div style="display:flex;align-items:center;gap:6px;">' +
+                            '<div style="flex:1;height:5px;background:rgba(255,255,255,0.2);border-radius:3px;overflow:hidden;">' +
+                                '<div id="edo-mastery-fill" style="height:100%;background:#ee9b00;border-radius:3px;width:0%;transition:width 0.6s ease;"></div>' +
+                            '</div>' +
+                            '<span id="edo-mastery-label" style="font-size:10px;color:rgba(255,255,255,0.85);white-space:nowrap;font-weight:500;">0/0</span>' +
+                        '</div>' +
+                    '</div>' +
                 '</div>' +
                 '<div class="edo-header__actions">' +
                     '<button id="edo-history-btn" class="edo-header__btn" title="Historique des conversations">' + SVG.history + '</button>' +
@@ -1029,6 +1138,7 @@
                     '<button class="edo-shortcut" data-question="Génère un quiz de 3 questions QCM sur ce cours">' + SVG.quiz + ' Quiz</button>' +
                     '<button class="edo-shortcut" data-question="Donne-moi des exemples concrets tirés de ce cours">' + SVG.bulb + ' Exemple</button>' +
                     '<button class="edo-shortcut" data-question="Résume et synthétise le contenu complet de ce cours">' + SVG.list + ' Résumer</button>' +
+                    '<button class="edo-shortcut" id="edo-mindmap-btn">' + SVG.mindmap + ' Mind Map</button>' +
                     '<button class="edo-shortcut" id="edo-flashcards-btn">' + SVG.card + ' Flashcards</button>' +
                 '</div>' +
             '</div>' +
@@ -1051,6 +1161,7 @@
         panel.querySelector('#edo-theme-toggle').addEventListener('click', toggleTheme);
         loadLastConversation(apiUrl, courseId);
         loadStudentLevel(apiUrl, courseId);
+        loadMastery(apiUrl, courseId);
 
         // FAB open/close
         fab.addEventListener('click', function () {
@@ -1083,6 +1194,7 @@
         // Raccourcis
         panel.querySelectorAll('.edo-shortcut').forEach(function(btn){
             btn.addEventListener('click', function(){
+                if (btn.id === 'edo-mindmap-btn')    { triggerMindMap(apiUrl, courseId); return; }
                 if (btn.id === 'edo-flashcards-btn') { triggerFlashcards(apiUrl, courseId); return; }
                 var q = btn.dataset.question;
                 if (q) sendQuestion(q, apiUrl, courseId);

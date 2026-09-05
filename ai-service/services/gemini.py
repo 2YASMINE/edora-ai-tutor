@@ -115,7 +115,7 @@ def _log_usage(student_id: int, course_id: int, task_type: str,
         )
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO edora_usage_logs
+                """INSERT INTO mdl_edora_usage_logs
                    (student_id, course_id, task_type,
                     tokens_in, tokens_out, cost_usd)
                    VALUES (%s, %s, %s, %s, %s, %s)""",
@@ -871,7 +871,7 @@ def ask_gemini(
     # Seulement si l'étudiant n'est pas frustré/confus
     if mood == "neutre" and detect_exam_question(question):
         logger.info("🎓 Question d'examen détectée — student_id: %s", pseudonymize_id(student_id))
-        # Log dans edora_usage_logs
+        # Log dans mdl_edora_usage_logs
         try:
             _log_usage(student_id, course_id, "exam_detected", 0, 0, 0.0)
         except Exception:
