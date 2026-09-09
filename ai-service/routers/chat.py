@@ -7,7 +7,7 @@ from services.embeddings import get_embedding
 from services.chroma_service import search_similar_chunks
 from services.gemini import (
     ask_gemini, classify_question,
-    generate_level_quiz, classify_level, get_level_system_prompt,generate_flashcards 
+    generate_level_quiz, classify_level, get_level_system_prompt, generate_flashcards
 )
 from services.history_service import (
     save_message, get_history, get_user_history,
@@ -19,8 +19,6 @@ import numpy as np
 import asyncio
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
 
 
 CACHE_SIMILARITY_THRESHOLD = 0.92  # seuil de similarité
@@ -130,7 +128,7 @@ SMALL_TALK_KEYWORDS = [
     "comment vas", "ça va", "comment tu vas", "quoi de neuf",
     "ok", "oui", "non", "d'accord", "super", "cool", "bien",
     "aide", "help", "qui es-tu", "qui es tu", "présente-toi",
-    "c'est quoi edora", "tu peux", "tu es","cc","Bnjr","Bnsr",
+    "c'est quoi edora", "tu peux", "tu es", "cc", "Bnjr", "Bnsr",
 ]
 
 
@@ -190,7 +188,8 @@ async def get_level_quiz(request: LevelQuizRequest):
 
     try:
         from services.embeddings import get_embedding
-        query_embedding = get_embedding("concepts principaux du cours résumé général")
+        query_embedding = get_embedding(
+            "concepts principaux du cours résumé général")
         chunks = search_similar_chunks(
             course_id=request.course_id,
             query_embedding=query_embedding,
@@ -247,15 +246,18 @@ async def save_level(request: LevelSaveRequest):
         "total":   request.total
     }
 
+
 class FlashcardsRequest(BaseModel):
     course_id: int
     student_id: int = 0
+
 
 @router.post("/flashcards")
 async def get_flashcards(request: FlashcardsRequest):
     """Génère des flashcards depuis le contenu du cours."""
     try:
-        query_embedding = get_embedding("concepts clés définitions résumé du cours")
+        query_embedding = get_embedding(
+            "concepts clés définitions résumé du cours")
         chunks = search_similar_chunks(
             course_id=request.course_id,
             query_embedding=query_embedding,
@@ -265,17 +267,20 @@ async def get_flashcards(request: FlashcardsRequest):
         chunks = []
 
     if not chunks:
-        raise HTTPException(status_code=404, detail="Aucun contenu disponible pour ce cours.")
+        raise HTTPException(
+            status_code=404, detail="Aucun contenu disponible pour ce cours.")
 
     result = generate_flashcards(chunks)
     if not result["success"]:
-        raise HTTPException(status_code=503, detail="Impossible de générer les flashcards.")
+        raise HTTPException(
+            status_code=503, detail="Impossible de générer les flashcards.")
 
     return {"flashcards": result["flashcards"]}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ENDPOINT : RÉCUPÉRER LE NIVEAU D'UN ÉTUDIANT
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/student-level")
 async def get_level(student_id: int = 0, course_id: int = 0):
@@ -335,9 +340,11 @@ async def ask(request: AskRequest):
     """
     # Étape 1 : Validation
     if len(request.question.strip()) == 0:
-        raise HTTPException(status_code=400, detail="La question ne peut pas être vide.")
+        raise HTTPException(
+            status_code=400, detail="La question ne peut pas être vide.")
     if len(request.question) > 500:
-        raise HTTPException(status_code=400, detail="Question trop longue (max 500 caractères).")
+        raise HTTPException(
+            status_code=400, detail="Question trop longue (max 500 caractères).")
 
     # Étape 2 : Classification
     task_type = classify_question(request.question)
@@ -409,7 +416,7 @@ async def ask(request: AskRequest):
         n_results=n_results
     )
 
-    # Étape 7 : Chunks + sources
+        # Étape 7 : Chunks + sources
     context_chunks = []
     sources = []
     if results:
@@ -422,6 +429,42 @@ async def ask(request: AskRequest):
                 resource_name=chunk["metadata"].get("source", "cours"),
                 chunk_excerpt=chunk["text"]
             ))
+
+    # ── Détection lacunes : logger si score faible ──────────────────
+    SIMILARITY_THRESHOLD = 0.5
+    if results:
+        max_score = max(1 - chunk["distance"] for chunk in results)
+        if max_score < SIMILARITY_THRESHOLD:
+            try:
+                from services.history_service import get_connection
+                conn = get_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO mdl_edora_unanswered (course_id, user_id, question, similarity_score)
+                    VALUES (%s, %s, %s, %s)
+                """, (request.course_id, request.student_id, request.question, max_score))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                logger.info("Question sans réponse RAG loggée — score: %.3f", max_score)
+            except Exception as e:
+                logger.warning("Erreur log unanswered : %s", str(e))
+    if max_score < SIMILARITY_THRESHOLD:
+        try:
+            from services.history_service import get_connection
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO mdl_edora_unanswered (course_id, user_id, question, similarity_score)
+                VALUES (%s, %s, %s, %s)
+            """, (request.course_id, request.student_id, request.question, max_score))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            logger.info(
+                "Question sans réponse RAG loggée — score: %.3f", max_score)
+        except Exception as e:
+            logger.warning("Erreur log unanswered : %s", str(e))
 
     # Étape 8 : Historique + compression
     history = [
@@ -462,11 +505,14 @@ async def ask(request: AskRequest):
             raw = raw.replace("```json", "").replace("```", "").strip()
             quiz_data = json.loads(raw)
             if "questions" in quiz_data:
-                gemini_result["answer"] = json.dumps(quiz_data, ensure_ascii=False)
+                gemini_result["answer"] = json.dumps(
+                    quiz_data, ensure_ascii=False)
                 gemini_result["is_quiz_json"] = True
-                logger.info("Quiz JSON parsé — %d questions", len(quiz_data["questions"]))
+                logger.info("Quiz JSON parsé — %d questions",
+                            len(quiz_data["questions"]))
         except (json.JSONDecodeError, KeyError) as e:
-            logger.warning("Quiz JSON invalide, réponse brute conservée : %s", str(e))
+            logger.warning(
+                "Quiz JSON invalide, réponse brute conservée : %s", str(e))
             gemini_result["is_quiz_json"] = False
 
     # Étape 12 : conversation_id
@@ -622,11 +668,13 @@ async def delete_conversation(conversation_id: str):
 # ENDPOINT : BARRE DE PROGRESSION MAÎTRISE
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class MasteryUpdateRequest(BaseModel):
     user_id:  int
     course_id: int
     chunk_id:  str
     is_correct: bool = True
+
 
 @router.get("/mastery")
 async def get_mastery(user_id: int, course_id: int):
@@ -822,8 +870,8 @@ Règles strictes :
         from google import genai as _genai
         from google.genai import types as _types
         _client = _genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        _model  = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
-        _resp   = _client.models.generate_content(
+        _model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        _resp = _client.models.generate_content(
             model=_model,
             contents=prompt,
             config=_types.GenerateContentConfig(
@@ -841,7 +889,7 @@ Règles strictes :
 
         # Extraire le premier objet JSON si Gemini a ajouté du texte
         brace_start = raw.find("{")
-        brace_end   = raw.rfind("}")
+        brace_end = raw.rfind("}")
         if brace_start >= 0 and brace_end > brace_start:
             raw = raw[brace_start:brace_end + 1]
 
@@ -858,7 +906,7 @@ Règles strictes :
                 # Tentative 4 : extraire avec json repair manuel
                 # Couper après le dernier lien complet
                 last_bracket = raw_clean.rfind(']')
-                last_brace   = raw_clean.rfind('}')
+                last_brace = raw_clean.rfind('}')
                 if last_bracket > 0 and last_brace > last_bracket:
                     raw_clean = raw_clean[:last_brace + 1]
                 elif last_bracket > 0:
@@ -883,9 +931,125 @@ Règles strictes :
 
     except _json.JSONDecodeError as e:
         logger.error("MindMap JSON invalide : %s | raw: %.300s", str(e), raw)
-        raise HTTPException(status_code=503, detail="Réponse Gemini non parsable en JSON.")
+        raise HTTPException(
+            status_code=503, detail="Réponse Gemini non parsable en JSON.")
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Erreur /mindmap : %s", str(e))
         raise HTTPException(status_code=503, detail=str(e))
+
+ # ══════════════════════════════════════════════════════════════════════════════
+# ENDPOINT : REFORMULER UNE RÉPONSE SELON LE NIVEAU
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class ReformulateRequest(BaseModel):
+    text:      str
+    level:     int  # 1 = simple, 2 = standard, 3 = expert
+    course_id: int = 0
+
+
+REFORMULATE_PROMPTS = {
+    1: """Reformule ce texte pour un enfant de 10 ans.
+RÈGLES STRICTES :
+- Utilise uniquement des mots simples du quotidien
+- Ajoute une analogie concrète (jeu, nourriture, sport...)
+- Maximum 3 phrases courtes
+- Retourne UNIQUEMENT la reformulation, rien d'autre
+- PAS de méta-commentaires, PAS d'introduction, PAS de conclusion""",
+
+    2: """Reformule ce texte avec une explication claire et pédagogique.
+RÈGLES STRICTES :
+- Définis les termes techniques importants
+- Structure en 2-3 phrases bien construites
+- Retourne UNIQUEMENT la reformulation, rien d'autre
+- PAS de méta-commentaires, PAS d'introduction, PAS de conclusion""",
+
+    3: """Reformule ce texte avec une explication technique et spécialisée.
+RÈGLES STRICTES :
+- Utilise les termes spécialisés du domaine
+- Sois précis et exhaustif
+- Retourne UNIQUEMENT la reformulation, rien d'autre
+- PAS de méta-commentaires, PAS d'introduction, PAS de conclusion"""
+}
+
+
+@router.post("/reformulate")
+async def reformulate(request: ReformulateRequest):
+    """
+    Reformule un texte selon le niveau choisi par l'étudiant.
+    level 1 = simple, 2 = standard, 3 = expert.
+    """
+    if not request.text.strip():
+        raise HTTPException(
+            status_code=400, detail="Le texte ne peut pas être vide.")
+    if request.level not in [1, 2, 3]:
+        raise HTTPException(
+            status_code=400, detail="Le niveau doit être 1, 2 ou 3.")
+
+    prompt_instruction = REFORMULATE_PROMPTS[request.level]
+
+    prompt = f"{prompt_instruction}\n\nTexte à reformuler :\n{request.text}"
+
+    try:
+        from google import genai as _genai
+        from google.genai import types as _types
+        _client = _genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        _model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        _resp = _client.models.generate_content(
+            model=_model,
+            contents=prompt,
+            config=_types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=2024,
+            )
+        )
+        reformulated = _resp.text.strip() if _resp.text else ""
+        if not reformulated:
+            raise HTTPException(
+                status_code=503, detail="Réponse vide de Gemini.")
+
+        return {"success": True, "reformulated": reformulated, "level": request.level}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Erreur /reformulate : %s", str(e))
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ENDPOINT : QUESTIONS SANS RÉPONSE RAG (LACUNES DU COURS)
+# ══════════════════════════════════════════════════════════════════════════════
+@router.get("/unanswered")
+async def get_unanswered(course_id: int):
+    """
+    Retourne le top 5 des questions sans réponse RAG pour un cours.
+    Ce sont les questions avec un score de similarité < 0.5.
+    """
+    try:
+        from services.history_service import get_connection
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT question, similarity_score, COUNT(*) as nb_fois, MIN(created_at) as first_seen
+            FROM mdl_edora_unanswered
+            WHERE course_id = %s
+            GROUP BY question
+            ORDER BY nb_fois DESC, similarity_score ASC
+            LIMIT 5
+        """, (course_id,))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return {"course_id": course_id, "unanswered": [
+            {
+                "question": r["question"],
+                "score": round(r["similarity_score"], 3),
+                "nb_fois": r["nb_fois"],
+                "first_seen": str(r["first_seen"])
+            } for r in rows
+        ]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

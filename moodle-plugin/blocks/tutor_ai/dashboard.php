@@ -178,15 +178,18 @@ if ($has_conversations) {
 
     // 4. Alertes : étudiants bloqués (3+ conversations sur le même cours sans progression)
     $alertes_bloques = $DB->get_records_sql("
-        SELECT
-            ec.user_id,
-            COUNT(*) AS nb_conversations,
-            MAX(ec.created_at) AS derniere_activite,
-            ec.student_level
-        FROM {edora_conversations} ec
-        WHERE ec.course_id = :course_id
+    SELECT
+        ec.user_id,
+        u.firstname,
+        u.lastname,
+        COUNT(*) AS nb_conversations,
+        MAX(ec.created_at) AS derniere_activite,
+        ec.student_level
+    FROM {edora_conversations} ec
+    JOIN {user} u ON u.id = ec.user_id
+    WHERE ec.course_id = :course_id
           AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-        GROUP BY ec.user_id, ec.student_level
+        GROUP BY ec.user_id, ec.student_level, u.firstname, u.lastname
         HAVING COUNT(*) >= 3 AND (ec.student_level = 'debutant' OR ec.student_level IS NULL)
         ORDER BY nb_conversations DESC
         LIMIT 10
@@ -671,7 +674,7 @@ html[data-theme="dark"] .edo-table-missing {
             <?php foreach ($alertes_bloques as $a): ?>
             <li class="edo-alert-item">
                 <span class="edo-alert-badge"><?= (int)$a->nb_conversations ?>x</span>
-                Étudiant #<?= substr(hash('sha256', (string)$a->user_id), 0, 8) ?>
+                <?= s($a->firstname . ' ' . $a->lastname) ?>
                 — Niveau : <strong><?= $a->student_level ?: 'Non évalué' ?></strong>
                 — Dernière activité : <?= date('d/m H:i', strtotime($a->derniere_activite)) ?>
             </li>
@@ -747,8 +750,40 @@ html[data-theme="dark"] .edo-table-missing {
 
 </div>
 
-</div><!-- .edo-dash-body -->
-</div><!-- #edo-dashboard -->
+<!-- ══ TOP 5 LACUNES DU COURS ══════════════════════════════════════════════ -->
+<div class="edo-card" style="margin-top:20px;" id="edo-lacunes-card">
+    <div class="edo-card-header">
+        <div class="edo-card-title">🔍 Lacunes détectées — Sujets non couverts par le cours</div>
+        <span class="edo-card-badge">Top 5</span>
+    </div>
+    <div class="edo-card-body" id="edo-lacunes-body">
+        <div class="edo-empty"><span class="edo-empty-icon">⏳</span>Chargement...</div>
+    </div>
+</div>
+
+<script>
+(function(){
+    var courseId = <?= $selected_course ?>;
+    fetch('http://localhost:8000/unanswered?course_id=' + courseId)
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+        var body = document.getElementById('edo-lacunes-body');
+        if (!data.unanswered || data.unanswered.length === 0) {
+            body.innerHTML = '<div class="edo-empty"><span class="edo-empty-icon">✅</span>Aucune lacune détectée pour ce cours.</div>';
+            return;
+        }
+        var html = '<table class="edo-table"><thead><tr><th>Question posée</th><th>Fois</th><th>Score</th><th>Date</th></tr></thead><tbody>';
+        data.unanswered.forEach(function(l){
+            html += '<tr><td>' + l.question + '</td><td><span class="edo-pill edo-pill-amber">' + l.nb_fois + 'x</span></td><td><span style="color:#ef4444;font-weight:600;">' + l.score + '</span></td><td>' + l.first_seen.substring(0,10) + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        body.innerHTML = html;
+    })
+    .catch(function(){
+        document.getElementById('edo-lacunes-body').innerHTML = '<div class="edo-empty"><span class="edo-empty-icon">❌</span>Impossible de charger les lacunes.</div>';
+    });
+})();
+</script>
 
 <!-- ══ CHART.JS ═══════════════════════════════════════════════════════════ -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>

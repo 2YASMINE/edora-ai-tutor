@@ -2,7 +2,7 @@
 history_service.py — Gestion de l'historique des conversations et des niveaux étudiants.
 
 Ce module fournit toutes les opérations MariaDB liées aux conversations Edora :
-- Sauvegarde et récupération des messages (table edora_conversations)
+- Sauvegarde et récupération des messages (table mdl_edora_conversations)
 - Gestion du niveau pédagogique détecté par quiz (colonnes student_level, level_score)
 - Compression de l'historique long pour maîtriser les coûts Gemini
 """
@@ -40,7 +40,7 @@ def get_connection():
 
 def save_message(user_id: int, course_id: int, conversation_id: str, role: str, message: str):
     """
-    Sauvegarde un message dans la table edora_conversations.
+    Sauvegarde un message dans la table mdl_edora_conversations.
 
     Appelée deux fois par question : une fois pour le message "user"
     (question de l'étudiant) et une fois pour le message "assistant"
@@ -58,7 +58,7 @@ def save_message(user_id: int, course_id: int, conversation_id: str, role: str, 
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO edora_conversations
+            INSERT INTO mdl_edora_conversations
             (user_id, course_id, conversation_id, role, message)
             VALUES (%s, %s, %s, %s, %s)
         """, (user_id, course_id, conversation_id, role, message))
@@ -89,7 +89,7 @@ def get_history(conversation_id: str) -> list:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT role, message, created_at
-            FROM edora_conversations
+            FROM mdl_edora_conversations
             WHERE conversation_id = %s
             ORDER BY created_at ASC
         """, (conversation_id,))
@@ -122,7 +122,7 @@ def get_user_history(user_id: int, course_id: int) -> list:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT conversation_id, role, message, created_at
-            FROM edora_conversations
+            FROM mdl_edora_conversations
             WHERE user_id = %s AND course_id = %s
             ORDER BY created_at ASC
         """, (user_id, course_id))
@@ -143,7 +143,7 @@ def get_student_level(user_id: int, course_id: int) -> dict:
     """
     Récupère le niveau pédagogique détecté d'un étudiant pour un cours.
 
-    Interroge la table edora_conversations sur les colonnes student_level,
+    Interroge la table mdl_edora_conversations sur les colonnes student_level,
     level_score, level_quiz_done. Le niveau est persisté après le quiz initial
     et réutilisé à chaque session pour adapter les prompts Gemini.
 
@@ -162,7 +162,7 @@ def get_student_level(user_id: int, course_id: int) -> dict:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT student_level, level_score, level_quiz_done
-            FROM edora_conversations
+            FROM mdl_edora_conversations
             WHERE user_id = %s AND course_id = %s
               AND student_level IS NOT NULL
             ORDER BY created_at DESC
@@ -181,7 +181,7 @@ def get_student_level(user_id: int, course_id: int) -> dict:
         cursor2 = conn2.cursor(dictionary=True)
         cursor2.execute("""
             SELECT level_quiz_done
-            FROM edora_conversations
+            FROM mdl_edora_conversations
             WHERE user_id = %s AND course_id = %s
               AND level_quiz_done = 1
             LIMIT 1
@@ -222,7 +222,7 @@ def save_student_level(user_id: int, course_id: int,
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            UPDATE edora_conversations
+            UPDATE mdl_edora_conversations
             SET student_level   = %s,
                 level_score     = %s,
                 level_quiz_done = 1
@@ -230,7 +230,7 @@ def save_student_level(user_id: int, course_id: int,
         """, (level, score, user_id, course_id))
         if cursor.rowcount == 0:
             cursor.execute("""
-                INSERT INTO edora_conversations
+                INSERT INTO mdl_edora_conversations
                 (user_id, course_id, conversation_id, role,
                  message, student_level, level_score, level_quiz_done)
                 VALUES (%s, %s, %s, 'assistant',
@@ -269,7 +269,7 @@ def quiz_already_done(user_id: int, course_id: int) -> bool:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT 1 FROM edora_conversations
+            SELECT 1 FROM mdl_edora_conversations
             WHERE user_id = %s AND course_id = %s AND level_quiz_done = 1
             LIMIT 1
         """, (user_id, course_id))

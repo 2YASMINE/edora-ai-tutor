@@ -469,8 +469,25 @@
             if (!window.speechSynthesis) btnTts.style.display = 'none';
             var btnLike    = makeActionBtn(SVG.like,    'edo-btn-like',    '#6b7280');
             var btnDislike = makeActionBtn(SVG.dislike, 'edo-btn-dislike', '#6b7280');
+            var btnPdf = makeActionBtn(
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> PDF',
+    'edo-btn-pdf', '#6b7280'
+);
             actions.appendChild(btnCopy); actions.appendChild(btnRegen); actions.appendChild(btnTts);
             actions.appendChild(btnLike); actions.appendChild(btnDislike);
+            actions.appendChild(btnPdf);
+
+btnPdf.addEventListener('click', function() {
+    var url = lastApiUrl + '/export-pdf?user_id=' + studentId + '&course_id=' + lastCourseId;
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'bilan_edora.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+});
+
+
             btnCopy.addEventListener('click', function () {
                 navigator.clipboard.writeText(text).then(function () {
                     btnCopy.innerHTML = SVG.check + ' Copié'; btnCopy.style.color = '#22c55e';
@@ -499,8 +516,60 @@
                 btnLike.classList.remove('edo-feedback-active');
                 btnLike.style.color = '#6b7280'; btnLike.style.borderColor = ''; btnLike.style.background = '';
             });
-            messages.appendChild(actions); messages.scrollTop = messages.scrollHeight;
+            messages.appendChild(actions);
+
+            // ── SLIDER REFORMULATION ─────────────────────────────────────
+            var sliderWrap = document.createElement('div');
+            sliderWrap.className = 'edo-slider-wrap';
+            sliderWrap.innerHTML = 
+                '<div class="edo-slider-label">' +
+                    '<span>🎚️ Niveau d\'explication</span>' +
+                    '<span class="edo-slider-level-label">Standard</span>' +
+                '</div>' +
+                '<div class="edo-slider-row">' +
+                    '<span class="edo-slider-hint">Simple</span>' +
+                    '<input type="range" min="1" max="3" value="2" class="edo-slider-input">' +
+                    '<span class="edo-slider-hint">Expert</span>' +
+                '</div>';
+
+            var sliderInput = sliderWrap.querySelector('.edo-slider-input');
+            var levelLabel  = sliderWrap.querySelector('.edo-slider-level-label');
+            var levelNames  = { 1: 'Simple 🌱', 2: 'Standard 📘', 3: 'Expert 🚀' };
+
+            sliderInput.addEventListener('input', function() {
+                levelLabel.textContent = levelNames[this.value];
+            });
+
+            sliderInput.addEventListener('change', function() {
+                var level = parseInt(this.value);
+                levelLabel.textContent = '⏳ Reformulation...';
+                sliderInput.disabled = true;
+
+                fetch(lastApiUrl + '/reformulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text, level: level, course_id: lastCourseId })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.success) {
+                        bubble.innerHTML = renderMarkdown(data.reformulated) + '<div class="edo-timestamp">' + getTime() + '</div>';
+                        text = data.reformulated;
+                    }
+                    levelLabel.textContent = levelNames[level];
+                    sliderInput.disabled = false;
+                })
+                .catch(function() {
+                    levelLabel.textContent = '❌ Erreur';
+                    setTimeout(function() { levelLabel.textContent = levelNames[level]; }, 2000);
+                    sliderInput.disabled = false;
+                });
+            });
+
+            messages.appendChild(sliderWrap);
+            messages.scrollTop = messages.scrollHeight;
             return row;
+            
         } else if (loading) {
             var row2 = document.createElement('div'); row2.classList.add('edo-bot-row');
             var av2 = document.createElement('div'); av2.className = 'edo-bot-avatar'; av2.innerHTML = AVATAR_IMG_SM;
@@ -1118,6 +1187,7 @@ function triggerMindMap(apiUrl, courseId) {
                 '<div class="edo-header__actions">' +
                     '<button id="edo-history-btn" class="edo-header__btn" title="Historique des conversations">' + SVG.history + '</button>' +
                     '<button id="edo-theme-toggle" class="edo-header__btn" title="Passer en mode sombre">' + SVG.moon + '</button>' +
+                    '<button id="edo-expand" class="edo-header__btn" title="Agrandir / Réduire le chat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>' +
                     '<button id="edo-minimize" class="edo-header__btn" title="Réduire">' + SVG.minimize + '</button>' +
                     '<button id="edo-close" class="edo-header__btn" aria-label="Fermer">' + SVG.close + '</button>' +
                 '</div>' +
@@ -1190,6 +1260,14 @@ function triggerMindMap(apiUrl, courseId) {
                 el.style.display = min ? '' : 'none';
             });
         });
+
+panel.querySelector('#edo-expand').addEventListener('click', function(){
+    var isExpanded = panel.classList.toggle('edo-panel--expanded');
+    panel.querySelector('#edo-expand').title = isExpanded ? 'Réduire le chat' : 'Agrandir le chat';
+});
+
+
+
 
         // Raccourcis
         panel.querySelectorAll('.edo-shortcut').forEach(function(btn){

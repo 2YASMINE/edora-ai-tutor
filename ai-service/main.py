@@ -6,6 +6,7 @@ from routers import chat, resources
 from routers.flashcards import router as flashcards_router
 from dotenv import load_dotenv
 from db.migrations import run_migrations
+from routers.export import router as export_router
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
@@ -43,3 +44,4 @@ async def health():
 app.include_router(chat.router)
 app.include_router(resources.router)
 app.include_router(flashcards_router)
+app.include_router(export_router)
