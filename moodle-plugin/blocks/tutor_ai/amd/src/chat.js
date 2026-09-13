@@ -258,22 +258,20 @@
 .edo-shortcuts-toggle.edo-sc-collapsed svg {
     transform:rotate(180deg);
 }
-/* La barre se replie en douceur */
-.edo-shortcuts {
+/* La zone scroll se replie en douceur */
+.edo-shortcuts-scroll-zone {
     width:100%;
-    overflow:hidden;
-    transition:max-height 0.35s ease, opacity 0.3s ease, padding 0.3s ease;
-    max-height:300px;
+    overflow-y:auto;
+    overflow-x:hidden;
+    transition:max-height 0.35s ease, opacity 0.3s ease;
+    max-height:160px;
     opacity:1;
 }
-.edo-shortcuts.edo-sc-hidden {
+.edo-shortcuts-scroll-zone.edo-sc-hidden {
     max-height:0 !important;
     opacity:0 !important;
     pointer-events:none;
-    padding-top:0 !important;
-    padding-bottom:0 !important;
-    border-top:none !important;
-    border-bottom:none !important;
+    overflow:hidden !important;
 }
 /* Dark mode overrides pour le toggle */
 #edo-panel[data-theme="dark"] .edo-shortcuts-toggle {
@@ -413,9 +411,9 @@
     function renderMarkdown(text) {
         if (!text) return '';
         var html = text
-            .replace(/^### (.+)$/gm, '<h4 style="margin:10px 0 4px;font-size:13px;color:#005f73;font-weight:700;">$1</h4>')
-            .replace(/^## (.+)$/gm,  '<h3 style="margin:12px 0 5px;font-size:14px;color:#005f73;font-weight:700;">$1</h3>')
-            .replace(/^# (.+)$/gm,   '<h2 style="margin:14px 0 6px;font-size:15px;color:#005f73;font-weight:700;">$1</h2>')
+            .replace(/^### (.+)$/gm, '<h4 class="edo-md-h4">$1</h4>')
+            .replace(/^## (.+)$/gm,  '<h3 class="edo-md-h3">$1</h3>')
+            .replace(/^# (.+)$/gm,   '<h2 class="edo-md-h2">$1</h2>')
             .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.+?)\*/g, '<em>$1</em>')
             .replace(/^- (.+)$/gm, '<li style="margin:3px 0;padding-left:4px;">$1</li>')
@@ -463,28 +461,55 @@
             row.appendChild(bubble); messages.appendChild(row); messages.scrollTop = messages.scrollHeight;
             var actions = document.createElement('div'); actions.classList.add('edo-bubble-actions');
             var btnCopy    = makeActionBtn(SVG.copy + ' Copier',       'edo-btn-copy',    '#6b7280');
+            var btnPdf     = makeActionBtn(
+                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> PDF',
+                'edo-btn-pdf', '#6b7280'
+            );
             var btnRegen   = makeActionBtn(SVG.regen + ' Régénérer',   'edo-btn-regen',   '#6b7280');
             var btnTts     = makeActionBtn(SVG_TTS_PLAY + ' Écouter',  'edo-btn-tts',     '#6b7280');
             btnTts.title   = 'Écouter la réponse';
             if (!window.speechSynthesis) btnTts.style.display = 'none';
             var btnLike    = makeActionBtn(SVG.like,    'edo-btn-like',    '#6b7280');
             var btnDislike = makeActionBtn(SVG.dislike, 'edo-btn-dislike', '#6b7280');
-            var btnPdf = makeActionBtn(
-    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> PDF',
-    'edo-btn-pdf', '#6b7280'
-);
-            actions.appendChild(btnCopy); actions.appendChild(btnRegen); actions.appendChild(btnTts);
+            actions.appendChild(btnCopy); actions.appendChild(btnPdf); actions.appendChild(btnRegen); actions.appendChild(btnTts);
             actions.appendChild(btnLike); actions.appendChild(btnDislike);
-            actions.appendChild(btnPdf);
 
 btnPdf.addEventListener('click', function() {
-    var url = lastApiUrl + '/export-pdf?user_id=' + studentId + '&course_id=' + lastCourseId;
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'bilan_edora.pdf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // PDF : envoyer le texte de la réponse à /export-pdf pour génération reportlab
+    var originalHtml = btnPdf.innerHTML;
+    btnPdf.innerHTML = '⏳';
+    btnPdf.disabled = true;
+
+    fetch(lastApiUrl + '/export-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            user_id:    parseInt(studentId) || 0,
+            course_id:  lastCourseId        || 0,
+            answer_text: text
+        })
+    })
+    .then(function(r) {
+        if (!r.ok) throw new Error('Erreur ' + r.status);
+        return r.blob();
+    })
+    .then(function(blob) {
+        var url = URL.createObjectURL(blob);
+        var a   = document.createElement('a');
+        a.href     = url;
+        a.download = 'reponse_edora_' + new Date().toISOString().slice(0,10) + '.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        btnPdf.innerHTML = '✅';
+        setTimeout(function(){ btnPdf.innerHTML = originalHtml; btnPdf.disabled = false; }, 2000);
+    })
+    .catch(function(e) {
+        console.error('[Edora] PDF error:', e);
+        btnPdf.innerHTML = originalHtml;
+        btnPdf.disabled  = false;
+    });
 });
 
 
@@ -882,6 +907,183 @@ function triggerMindMap(apiUrl, courseId) {
     }
 
     // ══════════════════════════════════════════════════════════
+    // GÉNÉRATION D'IMAGE EXPLICATIVE
+    // ══════════════════════════════════════════════════════════
+    async function triggerGenerateImage(apiUrl, courseId) {
+        var btn = document.getElementById('edo-genimage-btn');
+        var SVG_IMG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+        if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Génération en cours…'; }
+
+        var loadingRow = appendMessage('', 'bot', true);
+        try {
+            var resp = await fetch(apiUrl + '/generate-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ course_id: courseId, student_id: parseInt(studentId) })
+            });
+            if (loadingRow && loadingRow.parentNode) loadingRow.remove();
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var data = await resp.json();
+
+            var mime = data.mime_type || 'image/jpeg';
+            var imgSrc = data.image_url || (data.image_b64 ? ('data:' + mime + ';base64,' + data.image_b64) : null);
+            if (!imgSrc) throw new Error('Aucune image reçue du serveur');
+
+            var messages = document.getElementById('edo-messages');
+            var row = document.createElement('div'); row.classList.add('edo-bot-row');
+            var av = document.createElement('div'); av.className = 'edo-bot-avatar'; av.innerHTML = AVATAR_IMG_SM;
+            row.appendChild(av);
+
+            var bubble = document.createElement('div');
+            bubble.classList.add('edo-bubble', 'edo-bubble--bot');
+            bubble.style.cssText = 'max-width:92%;width:92%;';
+
+            var caption = document.createElement('div');
+            caption.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--edo-text-muted);margin-bottom:8px;line-height:1.5;white-space:normal;word-break:break-word;';
+            caption.textContent = '🖼️ ' + (data.caption || 'Illustration des concepts du cours.');
+
+            var imgWrapper = document.createElement('div');
+            imgWrapper.style.cssText = 'position:relative;border-radius:10px;overflow:hidden;border:1.5px solid var(--edo-border);box-shadow:0 2px 12px rgba(10,147,150,0.12);background:#f0f7f6;cursor:zoom-in;';
+
+            var imgEl = document.createElement('img');
+            imgEl.alt = 'Illustration du cours';
+            imgEl.style.cssText = 'width:100%;display:block;border-radius:10px;transition:opacity 0.4s ease;opacity:0;';
+
+            // Spinner
+            var spinner = document.createElement('div');
+            spinner.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f0f7f6;gap:8px;min-height:180px;';
+            spinner.innerHTML = '<div style="width:28px;height:28px;border:3px solid #d1e8e4;border-top-color:#0a9396;border-radius:50%;animation:edo-spin 0.8s linear infinite;"></div><span style="font-size:11px;color:#6b7280;">Génération de l\'image IA…</span>';
+            if (!document.getElementById('edo-spin-style')) {
+                var sp = document.createElement('style');
+                sp.id = 'edo-spin-style';
+                sp.textContent = '@keyframes edo-spin{to{transform:rotate(360deg)}}';
+                document.head.appendChild(sp);
+            }
+            imgWrapper.appendChild(spinner);
+            imgWrapper.appendChild(imgEl);
+
+            imgEl.onload  = function() { spinner.style.display = 'none'; imgEl.style.opacity = '1'; };
+            imgEl.onerror = function() { spinner.innerHTML = '<span style="font-size:12px;color:#ef4444;">⚠️ Image indisponible</span>'; };
+            imgEl.src = imgSrc;
+
+            // ── Lightbox modal (zoom local + arrière-plan flou) ──────────────
+            // Injecte le CSS du lightbox une seule fois
+            if (!document.getElementById('edo-lightbox-style')) {
+                var lbStyle = document.createElement('style');
+                lbStyle.id = 'edo-lightbox-style';
+                lbStyle.textContent = [
+                    '#edo-lightbox{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;',
+                    'background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);',
+                    'opacity:0;transition:opacity 0.22s ease;pointer-events:none;}',
+                    '#edo-lightbox.edo-lb-open{opacity:1;pointer-events:all;}',
+                    '#edo-lightbox img{max-width:90vw;max-height:86vh;border-radius:12px;',
+                    'box-shadow:0 8px 48px rgba(0,0,0,0.45);transform:scale(0.92);',
+                    'transition:transform 0.22s ease;}',
+                    '#edo-lightbox.edo-lb-open img{transform:scale(1);}',
+                    '#edo-lb-toolbar{position:absolute;top:16px;right:16px;display:flex;gap:10px;}',
+                    '#edo-lb-toolbar button{background:rgba(255,255,255,0.18);border:none;border-radius:8px;',
+                    'padding:8px 14px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;',
+                    'backdrop-filter:blur(4px);display:flex;align-items:center;gap:6px;transition:background 0.15s;}',
+                    '#edo-lb-toolbar button:hover{background:rgba(255,255,255,0.32);}',
+                    '#edo-lb-close{font-size:20px!important;padding:6px 12px!important;}'
+                ].join('');
+                document.head.appendChild(lbStyle);
+            }
+
+            // Créer le lightbox s'il n'existe pas encore (singleton)
+            var lb = document.getElementById('edo-lightbox');
+            if (!lb) {
+                lb = document.createElement('div');
+                lb.id = 'edo-lightbox';
+                lb.innerHTML = [
+                    '<div id="edo-lb-toolbar">',
+                    '<button id="edo-lb-download">',
+                    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+                    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+                    '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+                    '</svg> Télécharger</button>',
+                    '<button id="edo-lb-close">✕</button>',
+                    '</div>',
+                    '<img id="edo-lb-img" src="" alt="Illustration agrandie"/>'
+                ].join('');
+                document.body.appendChild(lb);
+
+                // Fermer en cliquant sur le fond ou le ✕
+                lb.addEventListener('click', function(e) {
+                    if (e.target === lb || e.target.id === 'edo-lb-close' || e.target.closest('#edo-lb-close')) {
+                        lb.classList.remove('edo-lb-open');
+                    }
+                });
+                // Fermer avec Escape
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') lb.classList.remove('edo-lb-open');
+                });
+            }
+
+            // Ouvrir le lightbox au clic sur l'image ou le wrapper
+            imgWrapper.addEventListener('click', function() {
+                var lbImg = document.getElementById('edo-lb-img');
+                var lbDl  = document.getElementById('edo-lb-download');
+                lbImg.src = imgSrc;
+                // Bouton télécharger : crée un lien temporaire avec le bon nom de fichier
+                lbDl.onclick = function(e) {
+                    e.stopPropagation();
+                    var a = document.createElement('a');
+                    a.href = imgSrc;
+                    a.download = 'illustration-cours-' + Date.now() + '.png';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                };
+                lb.classList.add('edo-lb-open');
+            });
+
+            // Bouton télécharger sous l'image (dans la bulle) — accès rapide sans ouvrir le lightbox
+            var dlBar = document.createElement('div');
+            dlBar.style.cssText = 'display:flex;justify-content:flex-end;margin-top:6px;';
+            var dlBtn = document.createElement('button');
+            dlBtn.style.cssText = [
+                'display:inline-flex;align-items:center;gap:5px;',
+                'background:transparent;border:1.5px solid var(--edo-border);',
+                'border-radius:7px;padding:4px 11px;font-size:11.5px;font-weight:600;',
+                'color:var(--edo-text-muted);cursor:pointer;transition:all 0.15s;'
+            ].join('');
+            dlBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Télécharger';
+            dlBtn.addEventListener('mouseenter', function(){ dlBtn.style.background='var(--edo-bg-hover,#f0f7f6)'; dlBtn.style.color='var(--edo-primary,#0a9396)'; });
+            dlBtn.addEventListener('mouseleave', function(){ dlBtn.style.background='transparent'; dlBtn.style.color='var(--edo-text-muted)'; });
+            dlBtn.addEventListener('click', function() {
+                var a = document.createElement('a');
+                a.href = imgSrc;
+                a.download = 'illustration-cours-' + Date.now() + '.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            });
+            dlBar.appendChild(dlBtn);
+
+            var ts = document.createElement('div'); ts.className = 'edo-timestamp'; ts.textContent = getTime();
+
+            bubble.appendChild(caption);
+            bubble.appendChild(imgWrapper);
+            bubble.appendChild(dlBar);
+            bubble.appendChild(ts);
+            row.appendChild(bubble);
+            messages.appendChild(row);
+            messages.scrollTop = messages.scrollHeight;
+
+
+        } catch(e) {
+            if (loadingRow && loadingRow.parentNode) loadingRow.remove();
+            appendMessage('⚠️ Erreur lors de la génération de l\'image : ' + e.message, 'bot');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg> Image';
+            }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
     // HISTORIQUE
     // ══════════════════════════════════════════════════════════
     async function loadConversation(convId, apiUrl, courseId) {
@@ -1175,7 +1377,7 @@ function triggerMindMap(apiUrl, courseId) {
                 '<div class="edo-header__info">' +
                     '<span class="edo-name">Edora AI Tutor<span class="edo-name-badge">BETA</span></span>' +
                     '<span class="edo-subtitle"><span class="edo-dot edo-dot--green"></span>Votre assistant intelligent pour vos cours</span>' +
-                    '<div id="edo-mastery-bar" style="margin-top:4px;display:none;width:100%;">' +
+                    '<div id="edo-mastery-bar" style="margin-top:8px;margin-bottom:6px;display:none;width:100%;padding-left:13px;">' +
                         '<div style="display:flex;align-items:center;gap:6px;">' +
                             '<div style="flex:1;height:5px;background:rgba(255,255,255,0.2);border-radius:3px;overflow:hidden;">' +
                                 '<div id="edo-mastery-fill" style="height:100%;background:#ee9b00;border-radius:3px;width:0%;transition:width 0.6s ease;"></div>' +
@@ -1187,7 +1389,7 @@ function triggerMindMap(apiUrl, courseId) {
                 '<div class="edo-header__actions">' +
                     '<button id="edo-history-btn" class="edo-header__btn" title="Historique des conversations">' + SVG.history + '</button>' +
                     '<button id="edo-theme-toggle" class="edo-header__btn" title="Passer en mode sombre">' + SVG.moon + '</button>' +
-                    '<button id="edo-expand" class="edo-header__btn" title="Agrandir / Réduire le chat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>' +
+                    
                     '<button id="edo-minimize" class="edo-header__btn" title="Réduire">' + SVG.minimize + '</button>' +
                     '<button id="edo-close" class="edo-header__btn" aria-label="Fermer">' + SVG.close + '</button>' +
                 '</div>' +
@@ -1203,13 +1405,19 @@ function triggerMindMap(apiUrl, courseId) {
                 '<button id="edo-shortcuts-toggle" class="edo-shortcuts-toggle" title="Masquer / Afficher les raccourcis">' +
                     SVG_CHEVRON_DOWN +
                 '</button>' +
-                '<div class="edo-shortcuts" id="edo-shortcuts-bar">' +
-                    '<button class="edo-shortcut" data-question="Explique-moi les concepts principaux de ce cours">' + SVG.book + ' Expliquer</button>' +
-                    '<button class="edo-shortcut" data-question="Génère un quiz de 3 questions QCM sur ce cours">' + SVG.quiz + ' Quiz</button>' +
-                    '<button class="edo-shortcut" data-question="Donne-moi des exemples concrets tirés de ce cours">' + SVG.bulb + ' Exemple</button>' +
-                    '<button class="edo-shortcut" data-question="Résume et synthétise le contenu complet de ce cours">' + SVG.list + ' Résumer</button>' +
-                    '<button class="edo-shortcut" id="edo-mindmap-btn">' + SVG.mindmap + ' Mind Map</button>' +
-                    '<button class="edo-shortcut" id="edo-flashcards-btn">' + SVG.card + ' Flashcards</button>' +
+                '<div class="edo-shortcuts-scroll-zone" id="edo-shortcuts-bar">' +
+                    '<div class="edo-shortcuts">' +
+                        '<button class="edo-shortcut" data-question="Explique-moi les concepts principaux de ce cours">' + SVG.book + ' Expliquer</button>' +
+                        '<button class="edo-shortcut" data-question="Génère un quiz de 3 questions QCM sur ce cours">' + SVG.quiz + ' Quiz</button>' +
+                        '<button class="edo-shortcut" data-question="Donne-moi des exemples concrets tirés de ce cours">' + SVG.bulb + ' Exemple</button>' +
+                        '<button class="edo-shortcut" data-question="Résume et synthétise le contenu complet de ce cours">' + SVG.list + ' Résumer</button>' +
+                        '<button class="edo-shortcut" id="edo-mindmap-btn">' + SVG.mindmap + ' Mind Map</button>' +
+                        '<button class="edo-shortcut" id="edo-flashcards-btn">' + SVG.card + ' Flashcards</button>' +
+                        '<button class="edo-shortcut" id="edo-genimage-btn">' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>' +
+                            ' Image' +
+                        '</button>' +
+                    '</div>' +
                 '</div>' +
             '</div>' +
             '<div class="edo-input-row">' +
@@ -1261,10 +1469,7 @@ function triggerMindMap(apiUrl, courseId) {
             });
         });
 
-panel.querySelector('#edo-expand').addEventListener('click', function(){
-    var isExpanded = panel.classList.toggle('edo-panel--expanded');
-    panel.querySelector('#edo-expand').title = isExpanded ? 'Réduire le chat' : 'Agrandir le chat';
-});
+
 
 
 
@@ -1274,6 +1479,13 @@ panel.querySelector('#edo-expand').addEventListener('click', function(){
             btn.addEventListener('click', function(){
                 if (btn.id === 'edo-mindmap-btn')    { triggerMindMap(apiUrl, courseId); return; }
                 if (btn.id === 'edo-flashcards-btn') { triggerFlashcards(apiUrl, courseId); return; }
+                if (btn.id === 'edo-genimage-btn') {
+                    // Afficher le message utilisateur visible dans le chat, puis générer l'image
+                    var userMsg = btn.dataset.question || 'Génère moi une image qui explique ce cours';
+                    appendMessage(userMsg, 'user');
+                    triggerGenerateImage(apiUrl, courseId);
+                    return;
+                }
                 var q = btn.dataset.question;
                 if (q) sendQuestion(q, apiUrl, courseId);
             });

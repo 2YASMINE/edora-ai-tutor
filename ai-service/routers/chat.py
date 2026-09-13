@@ -403,9 +403,9 @@ async def ask(request: AskRequest):
     N_CHUNKS = {
         "resume":    15,
         "quiz":      10,
-        "expliquer": 10,
+        "expliquer": 15,
         "exemple":   10,
-        "chat":      10,
+        "chat":      15,
     }
     n_results = N_CHUNKS.get(task_type, 3)
 
@@ -968,8 +968,9 @@ RÈGLES STRICTES :
 
     3: """Reformule ce texte avec une explication technique et spécialisée.
 RÈGLES STRICTES :
-- Utilise les termes spécialisés du domaine
-- Sois précis et exhaustif
+- Utilise les termes spécialisés et le vocabulaire expert du domaine
+- Sois précis, rigoureux et complet
+- Maximum 5 phrases bien structurées
 - Retourne UNIQUEMENT la reformulation, rien d'autre
 - PAS de méta-commentaires, PAS d'introduction, PAS de conclusion"""
 }
@@ -1002,7 +1003,7 @@ async def reformulate(request: ReformulateRequest):
             contents=prompt,
             config=_types.GenerateContentConfig(
                 temperature=0.3,
-                max_output_tokens=2024,
+                max_output_tokens=4096,  # FIX : 2024 trop bas pour niveau Expert
             )
         )
         reformulated = _resp.text.strip() if _resp.text else ""
@@ -1053,3 +1054,365 @@ async def get_unanswered(course_id: int):
         ]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ENDPOINT : GÉNÉRER UNE IMAGE EXPLICATIVE DU COURS (SVG via Gemini)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class GenerateImageRequest(BaseModel):
+    course_id:  int
+    student_id: int = 0
+
+
+@router.get("/list-image-models")
+async def list_image_models():
+    """Endpoint de diagnostic — liste les modèles Gemini supportant la génération d'images."""
+    try:
+        from google import genai as _genai
+        _client = _genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        models = _client.models.list()
+        image_models = []
+        for m in models:
+            supported = getattr(m, "supported_generation_methods", []) or []
+            if any("image" in str(s).lower() or "generate" in str(s).lower() for s in supported):
+                image_models.append({
+                    "name": getattr(m, "name", str(m)),
+                    "display_name": getattr(m, "display_name", ""),
+                    "methods": [str(s) for s in supported]
+                })
+        return {"image_capable_models": image_models, "total": len(image_models)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.post("/generate-image")
+async def generate_image(request: GenerateImageRequest):
+    """
+    Génère une image pédagogique IA du cours via Gemini Image Generation.
+
+    Pipeline :
+    1. Récupère les chunks clés du cours via ChromaDB.
+    2. Gemini (modèle texte) génère un prompt image EN + caption FR depuis le contenu du cours.
+    3. Gemini imagen (modèle image) génère l'image PNG.
+    4. Retourne l'image en base64 + le caption.
+
+    Returns:
+        {"image_b64": str, "mime_type": str, "caption": str, "model_used": str}
+
+    Raises:
+        HTTPException 404: Aucun contenu de cours.
+        HTTPException 503: Erreur génération Gemini.
+    """
+    import base64
+    import json as _json
+    import re as _re
+
+    # ── Étape 1 : Récupérer le contenu du cours ───────────────────
+    try:
+        query_embedding = get_embedding(
+            "concepts principaux définitions résumé schéma illustration cours"
+        )
+        chunks = search_similar_chunks(
+            course_id=request.course_id,
+            query_embedding=query_embedding,
+            n_results=8
+        )
+    except Exception as e:
+        logger.error("Erreur ChromaDB /generate-image : %s", str(e))
+        chunks = []
+
+    if not chunks:
+        raise HTTPException(
+            status_code=404,
+            detail="Aucun contenu de cours disponible. Importez d'abord des ressources."
+        )
+
+    # ── Étape 2 : Construire le contexte du cours ─────────────────
+    course_content = ""
+    for i, chunk in enumerate(chunks[:8]):
+        text = chunk.get("text", "")
+        course_content += f"[Extrait {i+1}]\n{text}\n\n"
+    course_content = course_content[:4000]
+
+    # ── Étape 3 : Gemini text → prompt image EN + caption FR ──────
+    from google import genai as _genai
+    from google.genai import types as _types
+
+    _api_key    = os.getenv("GEMINI_API_KEY")
+    _text_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+    _client     = _genai.Client(api_key=_api_key)
+
+    caption      = "Illustration pédagogique des concepts du cours."
+    image_prompt = ""
+
+    try:
+        # On demande du JSON SANS response_mime_type pour éviter
+        # que certains modèles retournent du JSON mal encodé
+        meta_prompt = f"""Tu es un expert en création de prompts pour Gemini Image Generation.
+
+Voici le contenu d'un cours universitaire :
+{course_content[:2500]}
+
+Génère :
+1. UN PROMPT IMAGE en anglais (max 80 mots) illustrant le sujet SPÉCIFIQUE de ce cours.
+   Style : "clean flat design digital illustration, educational infographic style, white background, colorful, professional, no people, no text, no letters, no words in the image"
+   Cible le SUJET du cours directement (si le cours parle d'IA → illustre réseaux de neurones, algorithmes, data flows...).
+
+2. UN CAPTION en FRANÇAIS (10-15 mots, phrase complète, majuscule au début, point à la fin).
+
+Réponds UNIQUEMENT avec ce JSON valide (doubles guillemets obligatoires, aucun autre texte) :
+{{"image_prompt": "...", "caption": "..."}}"""
+
+        meta_resp = _client.models.generate_content(
+            model=_text_model,
+            contents=meta_prompt,
+            config=_types.GenerateContentConfig(
+                temperature=0.4,
+                max_output_tokens=500,
+            )
+        )
+
+        raw = meta_resp.text.strip() if meta_resp.text else ""
+        # Nettoyer les fences markdown
+        raw = _re.sub(r"```(?:json)?\s*", "", raw)
+        raw = _re.sub(r"```", "", raw).strip()
+        # Extraire le premier objet JSON trouvé dans la réponse
+        json_match = _re.search(r"\{[\s\S]*?\}", raw)
+        if not json_match:
+            raise ValueError(f"Aucun JSON trouvé dans : {raw[:200]}")
+        meta_data = _json.loads(json_match.group(0))
+
+        image_prompt = meta_data.get("image_prompt", "").strip()
+        caption      = meta_data.get("caption", caption).strip()
+        if not caption.endswith("."):
+            caption += "."
+
+        logger.info("Prompt image : %s", image_prompt)
+
+    except Exception as e:
+        logger.warning("Erreur génération prompt image : %s", str(e))
+        first_words  = " ".join(course_content.split()[:40])
+        image_prompt = (
+            f"Clean flat design educational illustration about: {first_words}. "
+            "White background, colorful icons, no text, professional infographic style, no letters."
+        )
+
+    if not image_prompt:
+        image_prompt = (
+            "Educational infographic illustration, clean flat design, colorful, "
+            "white background, learning concepts diagram, no text, professional."
+        )
+
+    # ── Étape 4 : Gemini Image Generation ("Nano Banana") ─────────
+    # Imagen est définitivement arrêté depuis juin 2026.
+    # Le remplacement officiel est "gemini-2.5-flash-image" (Nano Banana).
+    # On essaie plusieurs variantes dans l'ordre au cas où le compte
+    # aurait accès à une version différente.
+    IMAGE_MODELS_TO_TRY = [
+        "gemini-2.5-flash-image",      # Nano Banana — modèle officiel actuel (recommandé)
+        "gemini-3.1-flash-image",      # Nano Banana gen suivante (si disponible)
+        "gemini-3.1-flash-lite-image", # Variante lite
+        "gemini-2.5-flash-preview-05-20",  # Preview avec IMAGE modality
+    ]
+
+    last_error = None
+    for img_model in IMAGE_MODELS_TO_TRY:
+        try:
+            logger.info("Essai modèle image : %s", img_model)
+
+            # Tous les modèles Nano Banana utilisent generate_content()
+            # avec response_modalities=["IMAGE"]
+            img_response = _client.models.generate_content(
+                model=img_model,
+                contents=image_prompt,
+                config=_types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                    temperature=1.0,
+                )
+            )
+            img_b64 = None
+            mime    = "image/png"
+            for part in (img_response.candidates[0].content.parts
+                         if img_response.candidates else []):
+                if hasattr(part, "inline_data") and part.inline_data:
+                    raw_bytes = part.inline_data.data
+                    mime      = part.inline_data.mime_type or "image/png"
+                    img_b64   = (
+                        base64.b64encode(raw_bytes).decode("utf-8")
+                        if isinstance(raw_bytes, (bytes, bytearray))
+                        else raw_bytes
+                    )
+                    break
+            if not img_b64:
+                raise ValueError("generate_content n'a retourné aucune image")
+
+            logger.info("Image générée — model=%s course=%s mime=%s",
+                        img_model, request.course_id, mime)
+            return {
+                "image_b64":  img_b64,
+                "mime_type":  mime,
+                "caption":    caption,
+                "prompt":     image_prompt,
+                "model_used": img_model
+            }
+
+        except Exception as e:
+            logger.warning("Modèle %s échoué : %s", img_model, str(e))
+            last_error = e
+            continue
+
+    # Tous les modèles ont échoué
+    logger.error("Tous les modèles image ont échoué. Dernier : %s", str(last_error))
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            f"Aucun modèle Gemini image disponible sur ce compte. "
+            f"Appelle GET /list-image-models pour voir les modèles disponibles. "
+            f"Dernière erreur : {str(last_error)}"
+        )
+    )
+    import base64
+    import json as _json
+    import re as _re
+
+    # ── Étape 1 : Récupérer le contenu du cours ───────────────────
+    try:
+        query_embedding = get_embedding(
+            "concepts principaux définitions résumé schéma illustration cours"
+        )
+        chunks = search_similar_chunks(
+            course_id=request.course_id,
+            query_embedding=query_embedding,
+            n_results=8
+        )
+    except Exception as e:
+        logger.error("Erreur ChromaDB /generate-image : %s", str(e))
+        chunks = []
+
+    if not chunks:
+        raise HTTPException(
+            status_code=404,
+            detail="Aucun contenu de cours disponible. Importez d'abord des ressources."
+        )
+
+    # ── Étape 2 : Construire le contexte du cours ─────────────────
+    course_content = ""
+    for i, chunk in enumerate(chunks[:8]):
+        text = chunk.get("text", "")
+        course_content += f"[Extrait {i+1}]\n{text}\n\n"
+    course_content = course_content[:4000]
+
+    # ── Étape 3 : Gemini text → prompt image EN + caption FR ──────
+    from google import genai as _genai
+    from google.genai import types as _types
+
+    _api_key = os.getenv("GEMINI_API_KEY")
+    _text_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    _client = _genai.Client(api_key=_api_key)
+
+    caption = "Illustration pédagogique des concepts du cours."
+    image_prompt = ""
+
+    try:
+        meta_prompt = f"""Tu es un expert en création de prompts pour Gemini Image Generation.
+
+Voici le contenu d'un cours universitaire :
+{course_content[:2500]}
+
+Ta tâche — génère deux choses :
+
+1. UN PROMPT IMAGE en anglais (max 80 mots) pour illustrer le sujet principal de ce cours.
+   RÈGLES STRICTES :
+   - Décris une illustration pédagogique claire et professionnelle en lien DIRECT avec le sujet du cours.
+   - Style imposé : "clean flat design digital illustration, educational infographic style, white background, colorful, professional, no people, no text, no letters, no words"
+   - Cible le SUJET SPÉCIFIQUE du cours (ex: si le cours parle d'IA → illustre des réseaux de neurones, algorithmes, data...)
+   - NE mets PAS de texte ou lettres dans la scène.
+
+2. UN CAPTION en FRANÇAIS (phrase complète, 10-15 mots max, commence par majuscule, se termine par un point).
+   - Décris précisément ce que l'image représente en lien avec le cours.
+
+Retourne UNIQUEMENT ce JSON valide, sans markdown :
+{{"image_prompt": "...", "caption": "..."}}"""
+
+        meta_resp = _client.models.generate_content(
+            model=_text_model,
+            contents=meta_prompt,
+            config=_types.GenerateContentConfig(
+                temperature=0.5,
+                max_output_tokens=400,
+                response_mime_type="application/json",
+            )
+        )
+        meta_raw = meta_resp.text.strip() if meta_resp.text else "{}"
+        meta_raw = _re.sub(r"```(?:json)?\s*", "", meta_raw)
+        meta_raw = _re.sub(r"```", "", meta_raw).strip()
+        meta_data = _json.loads(meta_raw)
+
+        image_prompt = meta_data.get("image_prompt", "").strip()
+        caption      = meta_data.get("caption", caption).strip()
+        if not caption.endswith("."):
+            caption += "."
+
+        logger.info("Prompt image généré par Gemini : %s", image_prompt)
+
+    except Exception as e:
+        logger.warning("Erreur génération prompt image : %s", str(e))
+        # Fallback : construire un prompt minimal depuis les premiers mots du cours
+        first_words = " ".join(course_content.split()[:30])
+        image_prompt = (
+            f"Clean flat design educational illustration about: {first_words}. "
+            "White background, colorful icons, no text, professional infographic style."
+        )
+
+    if not image_prompt:
+        image_prompt = (
+            "Educational infographic illustration, clean flat design, colorful, "
+            "white background, learning concepts diagram, no text, professional."
+        )
+
+    # ── Étape 4 : Gemini Image Generation ────────────────────────
+    # Modèle dédié à la génération d'images dans l'API Gemini
+    IMAGE_MODEL = "gemini-2.0-flash-preview-image-generation"
+
+    try:
+        img_resp = _client.models.generate_content(
+            model=IMAGE_MODEL,
+            contents=image_prompt,
+            config=_types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"],
+                temperature=1.0,
+            )
+        )
+
+        # Extraire la partie image de la réponse
+        img_b64  = None
+        mime     = "image/png"
+
+        for part in (img_resp.candidates[0].content.parts if img_resp.candidates else []):
+            if hasattr(part, "inline_data") and part.inline_data:
+                img_bytes = part.inline_data.data
+                mime      = part.inline_data.mime_type or "image/png"
+                # inline_data.data peut être bytes ou déjà b64 selon la version du SDK
+                if isinstance(img_bytes, (bytes, bytearray)):
+                    img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+                else:
+                    img_b64 = img_bytes  # déjà une str base64
+                break
+
+        if not img_b64:
+            raise ValueError("Gemini Image Generation n'a retourné aucune image")
+
+        logger.info("Image Gemini générée — course=%s mime=%s", request.course_id, mime)
+        return {
+            "image_b64": img_b64,
+            "mime_type": mime,
+            "caption":   caption,
+            "prompt":    image_prompt
+        }
+
+    except Exception as e:
+        logger.error("Erreur Gemini Image Generation : %s", str(e))
+        raise HTTPException(
+            status_code=503,
+            detail=f"Erreur génération image Gemini : {str(e)}"
+        )
