@@ -909,7 +909,7 @@ function triggerMindMap(apiUrl, courseId) {
     // ══════════════════════════════════════════════════════════
     // GÉNÉRATION D'IMAGE EXPLICATIVE
     // ══════════════════════════════════════════════════════════
-    async function triggerGenerateImage(apiUrl, courseId) {
+    async function triggerGenerateImage(apiUrl, courseId,concept) {
         var btn = document.getElementById('edo-genimage-btn');
         var SVG_IMG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
         if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Génération en cours…'; }
@@ -919,11 +919,12 @@ function triggerMindMap(apiUrl, courseId) {
             var resp = await fetch(apiUrl + '/generate-image', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ course_id: courseId, student_id: parseInt(studentId) })
+                body: JSON.stringify({ course_id: courseId, student_id: parseInt(studentId),concept })
             });
             if (loadingRow && loadingRow.parentNode) loadingRow.remove();
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             var data = await resp.json();
+console.log('DEBUG image response:', data);
 
             var mime = data.mime_type || 'image/jpeg';
             var imgSrc = data.image_url || (data.image_b64 ? ('data:' + mime + ';base64,' + data.image_b64) : null);
@@ -1252,7 +1253,18 @@ function triggerMindMap(apiUrl, courseId) {
                         var expDiv = document.createElement('div');
                         expDiv.style.cssText = 'margin-top:10px;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.5;' + (isCorrect ? 'background:#f0fdf4;border:1px solid #86efac;color:#15803d;' : 'background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;');
                         expDiv.innerHTML = isCorrect ? '✅ <strong>Bonne réponse !</strong> ' + q.explanation : '❌ <strong>Mauvaise réponse.</strong> La bonne réponse est <strong>' + q.answer + '</strong>. ' + q.explanation;
-                        qDiv.appendChild(expDiv); messages.scrollTop = messages.scrollHeight;
+                        qDiv.appendChild(expDiv);
+
+// Scroll vers la prochaine question
+var allCards = container.querySelectorAll('.edo-quiz-card');
+var nextCard = allCards[idx + 1];
+if (nextCard) {
+    setTimeout(function() {
+        nextCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+} else {
+    messages.scrollTop = messages.scrollHeight;
+}
                         if (score.answered === score.total) {
                             var pct = Math.round((score.correct / score.total) * 100);
                             var scoreDiv = document.createElement('div'); scoreDiv.style.cssText = 'margin-top:6px;padding:14px;border-radius:10px;background:linear-gradient(135deg,#005f73,#0a9396);color:#fff;text-align:center;font-size:14px;';
@@ -1306,7 +1318,16 @@ function triggerMindMap(apiUrl, courseId) {
                     optContainer.querySelectorAll('button').forEach(function(b){b.style.cursor='default';var lm=b.innerHTML.match(/<strong>([A-D])\)<\/strong>/);var bL=lm?lm[1]:'';if(bL===correctLetter){b.style.background='#f0fdf4';b.style.borderColor='#22c55e';b.style.color='#15803d';}else if(b===btn&&!isCorrect){b.style.background='#fef2f2';b.style.borderColor='#ef4444';b.style.color='#dc2626';}else{b.style.opacity='0.4';}});
                     var expDiv=document.createElement('div');expDiv.style.cssText='margin-top:10px;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.5;'+(isCorrect?'background:#f0fdf4;border:1px solid #86efac;color:#15803d;':'background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;');
                     expDiv.innerHTML=isCorrect?'✅ <strong>Bonne réponse !</strong> '+explanation:'❌ <strong>Mauvaise réponse.</strong> La bonne réponse est <strong>'+correctLetter+'</strong>. '+explanation;
-                    qDiv.appendChild(expDiv);messages.scrollTop=messages.scrollHeight;
+                    qDiv.appendChild(expDiv);
+var allCards = container.querySelectorAll('.edo-quiz-card');
+var nextCard = allCards[idx + 1];
+if (nextCard) {
+    setTimeout(function() {
+        nextCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+} else {
+    messages.scrollTop = messages.scrollHeight;
+}
                     if(score.answered===score.total){var pct=Math.round((score.correct/score.total)*100);var scoreDiv=document.createElement('div');scoreDiv.style.cssText='margin-top:6px;padding:14px;border-radius:10px;background:linear-gradient(135deg,#005f73,#0a9396);color:#fff;text-align:center;font-size:14px;';scoreDiv.innerHTML=(pct>=80?'🎉':pct>=50?'👍':'💪')+' <strong>Score final : '+score.correct+'/'+score.total+' ('+pct+'%)</strong>';container.appendChild(scoreDiv);messages.scrollTop=messages.scrollHeight;}
                 });
                 optContainer.appendChild(btn);
@@ -1357,7 +1378,46 @@ function triggerMindMap(apiUrl, courseId) {
 
     async function checkAndTriggerLevelQuiz(question,apiUrl,courseId,convId,onProceed){if(levelQuizDone||levelQuizPending||isSmallTalk(question)){onProceed();return;}levelQuizPending=true;try{var resp=await fetch(apiUrl+'/level-quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({course_id:courseId,student_id:studentId,conversation_id:convId})});if(!resp.ok){levelQuizPending=false;onProceed();return;}var data=await resp.json();if(data.already_done){studentLevel=data.level;levelQuizDone=true;levelQuizPending=false;if(studentLevel)showLevelBadge(studentLevel);onProceed();return;}renderLevelQuiz(data.quiz,apiUrl,courseId,convId,function(correct,total){onProceed();});}catch(e){console.warn('[Edora] Erreur quiz niveau :',e);levelQuizPending=false;onProceed();}}
 
-    async function sendQuestion(question,apiUrl,courseId){var sendBtn=document.getElementById('edo-send');var input=document.getElementById('edo-input');lastQuestion=question;lastApiUrl=apiUrl;lastCourseId=courseId;sendBtn.disabled=true;input.disabled=true;clearSuggestions();if(window.speechSynthesis&&window.speechSynthesis.speaking)window.speechSynthesis.cancel();if(currentTtsBtn){resetTtsBtn(currentTtsBtn);currentTtsBtn=null;}appendMessage(question,'user');conversationHistory.push({role:'user',content:question});await checkAndTriggerLevelQuiz(question,apiUrl,courseId,conversationId,async function(){var loadingRow=appendMessage('','bot',true);try{var response=await fetch(apiUrl+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,course_id:courseId,student_id:studentId,conversation_id:conversationId,conversation_history:conversationHistory.slice(-6)})});loadingRow.remove();if(!response.ok)throw new Error('HTTP '+response.status);var data=await response.json();if(data.conversation_id){conversationId=data.conversation_id;localStorage.setItem('edo_conv_'+courseId,conversationId);}var msgEl=document.getElementById('edo-messages');var isQuiz=false;if(data.is_quiz_json===true)isQuiz=renderJsonQuiz(data.answer,msgEl);if(!isQuiz)isQuiz=renderInteractiveQuiz(data.answer,msgEl);if(!isQuiz)appendMessage(data.answer,'bot');conversationHistory.push({role:'assistant',content:data.answer});if(data.sources&&data.sources.length>0&&data.found_in_course)renderSources(data.sources,msgEl);if(data.follow_up_questions&&data.follow_up_questions.length>0)showSuggestions(data.follow_up_questions,apiUrl,courseId);if(data.is_quiz_json===true){setTimeout(function(){loadMastery(apiUrl,courseId);},1500);}}catch(error){if(document.querySelector('.edo-bubble--loading'))document.querySelector('.edo-bubble--loading').closest('.edo-bot-row').remove();appendMessage('⚠️ Je n\'arrive pas à joindre le serveur. Vérifie ta connexion et réessaie.','bot');console.error('[Edora Chat] Erreur fetch:',error);}finally{sendBtn.disabled=false;input.disabled=false;input.focus();}});if(levelQuizPending){sendBtn.disabled=false;input.disabled=false;}}
+    async function sendQuestion(question,apiUrl,courseId){var sendBtn=document.getElementById('edo-send');var input=document.getElementById('edo-input');lastQuestion=question;lastApiUrl=apiUrl;lastCourseId=courseId;
+        
+        
+        // Détecter si l'étudiant demande une image
+const imageKeywords = [
+    'génère une image', 'genere une image', 'génerer une image',
+    'illustre', 'montre moi une image', 'image de', 'image sur',
+    'visualise', 'dessine', 'schéma de', 'schema de', 'generate image',
+    'show image', 'draw'
+];
+const questionLower = question.toLowerCase();
+const isImageRequest = imageKeywords.some(kw => questionLower.includes(kw));
+if (isImageRequest) {
+    appendMessage(question, 'user');
+    let concept = question;
+    imageKeywords.forEach(kw => { concept = concept.toLowerCase().replace(kw, '').trim(); });
+    triggerGenerateImage(apiUrl, courseId, concept);
+    sendBtn.disabled = false;
+    input.disabled = false;
+    return;
+}
+sendBtn.disabled=true;input.disabled=true;clearSuggestions();if(window.speechSynthesis&&window.speechSynthesis.speaking)window.speechSynthesis.cancel();if(currentTtsBtn){resetTtsBtn(currentTtsBtn);currentTtsBtn=null;}appendMessage(question,'user');conversationHistory.push({role:'user',content:question});await checkAndTriggerLevelQuiz(question,apiUrl,courseId,conversationId,async function(){var loadingRow=appendMessage('','bot',true);try{var response=await fetch(apiUrl+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,course_id:courseId,student_id:studentId,conversation_id:conversationId,conversation_history:conversationHistory.slice(-6)})});loadingRow.remove();if(!response.ok)throw new Error('HTTP '+response.status);var data=await response.json();
+
+// Ajouter XP pour la question
+if (!isSmallTalk(question)) {
+fetch(apiUrl + '/xp/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({user_id: parseInt(studentId), course_id: courseId, action: 'question'})
+}).then(r => r.json()).then(xpData => {
+    if (xpData.new_badges && xpData.new_badges.length > 0) {
+        xpData.new_badges.forEach(badge => {
+            showXpNotification('+' + xpData.xp_gained + ' XP 🎉 Nouveau badge : ' + badge.label);
+        });
+    } else {
+        showXpNotification('+' + xpData.xp_gained + ' XP');
+    }
+    loadXpWidget(apiUrl, courseId);
+}).catch(() => {});}
+if(data.conversation_id){conversationId=data.conversation_id;localStorage.setItem('edo_conv_'+courseId,conversationId);}var msgEl=document.getElementById('edo-messages');var isQuiz=false;if(data.is_quiz_json===true)isQuiz=renderJsonQuiz(data.answer,msgEl);if(!isQuiz)isQuiz=renderInteractiveQuiz(data.answer,msgEl);if(!isQuiz)appendMessage(data.answer,'bot');conversationHistory.push({role:'assistant',content:data.answer});if(data.sources&&data.sources.length>0&&data.found_in_course)renderSources(data.sources,msgEl);if(data.follow_up_questions&&data.follow_up_questions.length>0)showSuggestions(data.follow_up_questions,apiUrl,courseId);if(data.is_quiz_json===true){setTimeout(function(){loadMastery(apiUrl,courseId);},1500);}}catch(error){if(document.querySelector('.edo-bubble--loading'))document.querySelector('.edo-bubble--loading').closest('.edo-bot-row').remove();appendMessage('⚠️ Je n\'arrive pas à joindre le serveur. Vérifie ta connexion et réessaie.','bot');console.error('[Edora Chat] Erreur fetch:',error);}finally{sendBtn.disabled=false;input.disabled=false;input.focus();}});if(levelQuizPending){sendBtn.disabled=false;input.disabled=false;}}
 
     function buildFloatingUI(apiUrl, courseId) {
         var fab = document.createElement('button');
@@ -1371,7 +1431,7 @@ function triggerMindMap(apiUrl, courseId) {
         panel.className = 'edo-panel';
 
         // ── FIX 2 : barre raccourcis dans un wrapper avec bouton toggle ──
-        panel.innerHTML =
+                panel.innerHTML =
             '<div class="edo-header">' +
                 '<div class="edo-header__avatar">' + AVATAR_IMG + '</div>' +
                 '<div class="edo-header__info">' +
@@ -1389,11 +1449,11 @@ function triggerMindMap(apiUrl, courseId) {
                 '<div class="edo-header__actions">' +
                     '<button id="edo-history-btn" class="edo-header__btn" title="Historique des conversations">' + SVG.history + '</button>' +
                     '<button id="edo-theme-toggle" class="edo-header__btn" title="Passer en mode sombre">' + SVG.moon + '</button>' +
-                    
                     '<button id="edo-minimize" class="edo-header__btn" title="Réduire">' + SVG.minimize + '</button>' +
                     '<button id="edo-close" class="edo-header__btn" aria-label="Fermer">' + SVG.close + '</button>' +
                 '</div>' +
             '</div>' +
+            '<div id="edo-xp-widget" style="padding:6px 13px;border-bottom:1px solid var(--edo-border);"></div>' +
             '<div id="edo-messages" class="edo-messages" role="log" aria-live="polite">' +
                 '<div class="edo-bot-row">' +
                     '<div class="edo-bot-avatar">' + AVATAR_IMG_SM + '</div>' +
@@ -1440,6 +1500,8 @@ function triggerMindMap(apiUrl, courseId) {
         loadLastConversation(apiUrl, courseId);
         loadStudentLevel(apiUrl, courseId);
         loadMastery(apiUrl, courseId);
+        loadXpWidget(apiUrl, courseId);
+
 
         // FAB open/close
         fab.addEventListener('click', function () {
@@ -1556,5 +1618,78 @@ function triggerMindMap(apiUrl, courseId) {
 
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); }
     else { init(); }
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// XP WIDGET
+// ══════════════════════════════════════════════════════════════════════════════
+
+function showXpNotification(message) {
+    var notif = document.createElement('div');
+    notif.style.cssText = [
+        'position:fixed;bottom:80px;right:20px;',
+        'background:linear-gradient(135deg,#0a9396,#005f73);',
+        'color:white;padding:10px 16px;border-radius:12px;',
+        'font-size:13px;font-weight:700;z-index:99999;',
+        'box-shadow:0 4px 15px rgba(10,147,150,0.4);',
+        'animation:edo-xp-pop 0.3s ease;pointer-events:none;'
+    ].join('');
+    notif.textContent = message;
+    if (!document.getElementById('edo-xp-anim')) {
+        var s = document.createElement('style');
+        s.id = 'edo-xp-anim';
+        s.textContent = '@keyframes edo-xp-pop{from{opacity:0;transform:translateY(10px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}';
+        document.head.appendChild(s);
+    }
+    document.body.appendChild(notif);
+    setTimeout(function() {
+        notif.style.transition = 'opacity 0.4s';
+        notif.style.opacity = '0';
+        setTimeout(function() { notif.remove(); }, 400);
+    }, 2500);
+}
+
+function loadXpWidget(apiUrl, courseId) {
+    fetch(apiUrl + '/xp?user_id=' + studentId + '&course_id=' + courseId)
+    .then(r => r.json())
+    .then(data => {
+        var widget = document.getElementById('edo-xp-widget');
+        if (!widget) return;
+
+        var levelColors = {
+            'Bronze':  '#cd7f32',
+            'Argent':  '#aaaaaa',
+            'Or':      '#ffd700',
+            'Platine': '#00c8ff',
+            'Diamant': '#b9f2ff'
+        };
+        var color = levelColors[data.level] || '#0a9396';
+        var percent = data.next_level_xp ? Math.round((data.xp / data.next_level_xp) * 100) : 100;
+
+        widget.innerHTML = [
+            '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;',
+            'background:var(--edo-bg,#f8fffe);border-radius:10px;',
+            'border:1.5px solid var(--edo-border,#e0f0ef);margin-bottom:8px;">',
+            '<div style="font-size:18px;">⚡</div>',
+            '<div style="flex:1;">',
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">',
+            '<span style="font-size:12px;font-weight:700;color:', color, ';">', data.level, '</span>',
+            '<span style="font-size:12px;font-weight:600;color:var(--edo-text,#1a1a2e);">', data.xp, ' XP</span>',
+            '</div>',
+            '<div style="background:#e0f0ef;border-radius:4px;height:6px;overflow:hidden;">',
+            '<div style="width:', Math.min(percent, 100), '%;height:100%;',
+            'background:linear-gradient(90deg,#0a9396,', color, ');border-radius:4px;',
+            'transition:width 0.5s ease;"></div>',
+            '</div>',
+            data.next_level_xp ? '<div style="font-size:10px;color:var(--edo-text-muted,#6b7280);margin-top:2px;">' + data.xp + ' / ' + data.next_level_xp + ' XP</div>' : '',
+            '</div></div>',
+            data.badges && data.badges.length > 0 ?
+                '<div style="display:flex;flex-wrap:wrap;gap:4px;padding:0 4px;">' +
+                data.badges.map(b => '<span style="font-size:11px;background:var(--edo-bg,#f0f7f6);border:1px solid var(--edo-border,#e0f0ef);border-radius:6px;padding:2px 7px;">' + b.label + '</span>').join('') +
+                '</div>' : ''
+        ].join('');
+    })
+    .catch(() => {});
+}
 
 })();

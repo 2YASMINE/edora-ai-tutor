@@ -83,6 +83,26 @@ global $DB;
 
 // ── Paramètre course_id + validation stricte ─────────────────────────────────
 $selected_course = optional_param('course_id', 0, PARAM_INT);
+$selected_period = optional_param('period', 'all', PARAM_ALPHA);
+$allowed_periods = ['day', 'week', 'month', 'all'];
+if (!in_array($selected_period, $allowed_periods)) {
+    $selected_period = 'all';
+}
+
+// Filtre SQL selon la période
+switch ($selected_period) {
+    case 'day':
+        $period_filter = "AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)";
+        break;
+    case 'week':
+        $period_filter = "AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+        break;
+    case 'month':
+        $period_filter = "AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+        break;
+    default:
+        $period_filter = "";
+}
 $teacher_course_ids = array_map('intval', array_keys($teacher_courses));
 
 if ($selected_course && !in_array($selected_course, $teacher_course_ids, true)) {
@@ -137,15 +157,15 @@ if ($has_conversations) {
 
     // 1. Statistiques globales du cours
     $stats = $DB->get_record_sql("
-        SELECT
-            COUNT(DISTINCT ec.user_id)                          AS nb_etudiants,
-            COUNT(*)                                               AS nb_conversations,
-            COUNT(CASE WHEN ec.student_level = 'debutant'      THEN 1 END) AS nb_debutants,
-            COUNT(CASE WHEN ec.student_level = 'intermediaire' THEN 1 END) AS nb_intermediaires,
-            COUNT(CASE WHEN ec.student_level = 'avance'        THEN 1 END) AS nb_avances
-        FROM {edora_conversations} ec
-        WHERE ec.course_id = :course_id
-    ", ['course_id' => $selected_course]);
+    SELECT
+        COUNT(DISTINCT ec.user_id)                          AS nb_etudiants,
+        COUNT(*)                                               AS nb_conversations,
+        COUNT(CASE WHEN ec.student_level = 'debutant'      THEN 1 END) AS nb_debutants,
+        COUNT(CASE WHEN ec.student_level = 'intermediaire' THEN 1 END) AS nb_intermediaires,
+        COUNT(CASE WHEN ec.student_level = 'avance'        THEN 1 END) AS nb_avances
+    FROM {edora_conversations} ec
+    WHERE ec.course_id = :course_id $period_filter
+", ['course_id' => $selected_course]);
 
     // 2. Heatmap des types de tâches (ce que les étudiants demandent le plus)
     $heatmap_data = $DB->get_records_sql("
@@ -153,7 +173,7 @@ if ($has_conversations) {
             task_type,
             COUNT(*) AS nb_questions
         FROM {edora_conversations}
-        WHERE course_id = :course_id
+        WHERE course_id = :course_id 
           AND task_type IS NOT NULL
           AND task_type NOT IN ('distress', 'exam')
         GROUP BY task_type
@@ -169,7 +189,7 @@ if ($has_conversations) {
             COUNT(CASE WHEN student_level = 'intermediaire' THEN 1 END) AS intermediaires,
             COUNT(CASE WHEN student_level = 'avance'        THEN 1 END) AS avances
         FROM {edora_conversations}
-        WHERE course_id = :course_id
+        WHERE course_id = :course_id $period_filter
           AND student_level IS NOT NULL
         GROUP BY DATE_FORMAT(created_at, '%Y-%u')
         ORDER BY semaine ASC
@@ -187,7 +207,7 @@ if ($has_conversations) {
         ec.student_level
     FROM {edora_conversations} ec
     JOIN {user} u ON u.id = ec.user_id
-    WHERE ec.course_id = :course_id
+    WHERE ec.course_id = :course_id $period_filter
           AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         GROUP BY ec.user_id, ec.student_level, u.firstname, u.lastname
         HAVING COUNT(*) >= 3 AND (ec.student_level = 'debutant' OR ec.student_level IS NULL)
@@ -201,7 +221,7 @@ if ($has_conversations) {
             student_level,
             COUNT(DISTINCT user_id) AS nb_etudiants
         FROM {edora_conversations}
-        WHERE course_id = :course_id
+        WHERE course_id = :course_id $period_filter
           AND student_level IS NOT NULL
         GROUP BY student_level
     ", ['course_id' => $selected_course]);
@@ -213,7 +233,7 @@ if ($has_conversations) {
             DAYNAME(created_at)   AS jour_nom,
             COUNT(*)              AS nb_interactions
         FROM {edora_conversations}
-        WHERE course_id = :course_id
+        WHERE course_id = :course_id 
         GROUP BY DAYOFWEEK(created_at), DAYNAME(created_at)
         ORDER BY DAYOFWEEK(created_at)
     ", ['course_id' => $selected_course]);
@@ -613,15 +633,27 @@ html[data-theme="dark"] .edo-table-missing {
         <label>📚 Cours :</label>
         <form method="get" style="display:inline;">
             <select name="course_id" onchange="this.form.submit()">
-                <?php foreach ($courses_with_data as $c): ?>
-                    <option value="<?= $c->course_id ?>"
-                        <?= $c->course_id == $selected_course ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($c->fullname ?: 'Cours ' . $c->course_id) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
+    <?php foreach ($teacher_courses as $c): ?>
+        <option value="<?= $c->id ?>"
+            <?= $c->id == $selected_course ? 'selected' : '' ?>>
+            <?= htmlspecialchars($c->fullname ?: 'Cours ' . $c->id) ?>
+        </option>
+    <?php endforeach; ?>
+</select>
         </form>
     </div>
+    <div class="edo-course-select" style="margin-left:16px;">
+    <label>📅 Période :</label>
+    <form method="get" style="display:inline;">
+        <input type="hidden" name="course_id" value="<?= $selected_course ?>">
+        <select name="period" onchange="this.form.submit()">
+            <option value="day"   <?= $selected_period === 'day'   ? 'selected' : '' ?>>Aujourd'hui</option>
+            <option value="week"  <?= $selected_period === 'week'  ? 'selected' : '' ?>>Cette semaine</option>
+            <option value="month" <?= $selected_period === 'month' ? 'selected' : '' ?>>Ce mois</option>
+            <option value="all"   <?= $selected_period === 'all'   ? 'selected' : '' ?>>Tout</option>
+        </select>
+    </form>
+</div>
     <div class="edo-refresh">
         🕐 <?= date('H:i') ?>
         <a href="?course_id=<?= $selected_course ?>">↻ Rafraîchir</a>

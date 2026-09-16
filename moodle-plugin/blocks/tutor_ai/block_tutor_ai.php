@@ -358,4 +358,10 @@ class block_tutor_ai extends block_base {
     public function get_required_javascript() {
         return [];
     }
+
+    public function applicable_formats() {
+    return [
+        'all' => true,
+    ];
+}
 }

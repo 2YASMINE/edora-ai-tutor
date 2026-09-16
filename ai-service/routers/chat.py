@@ -332,7 +332,8 @@ async def ask(request: AskRequest):
         conversation_history: Historique partiel envoyé par le client.
 
     Returns:
-        AskResponse : {answer, conversation_id, sources, found_in_course, chunks_used, is_quiz_json}
+        AskResponse : {answer, conversation_id, sources,
+            found_in_course, chunks_used, is_quiz_json}
 
     Raises:
         HTTPException 400: Question vide ou trop longue.
@@ -446,7 +447,8 @@ async def ask(request: AskRequest):
                 conn.commit()
                 cursor.close()
                 conn.close()
-                logger.info("Question sans réponse RAG loggée — score: %.3f", max_score)
+                logger.info(
+                    "Question sans réponse RAG loggée — score: %.3f", max_score)
             except Exception as e:
                 logger.warning("Erreur log unanswered : %s", str(e))
     if max_score < SIMILARITY_THRESHOLD:
@@ -520,9 +522,9 @@ async def ask(request: AskRequest):
 
     # Étape 13 : Sauvegarde MariaDB
     save_message(request.student_id, request.course_id,
-                 conversation_id, "user", request.question)
+                 conversation_id, "user", request.question, task_type)
     save_message(request.student_id, request.course_id,
-                 conversation_id, "assistant", gemini_result["answer"])
+                 conversation_id, "assistant", gemini_result["answer"], task_type)
 
     # ── CACHE : sauvegarder (sauf quiz) ──────────────────────────
     if gemini_result["success"] and task_type != "quiz":
@@ -563,7 +565,8 @@ async def get_conversation_history(conversation_id: str, course_id: int = 0):
         course_id:       Non utilisé dans la requête SQL actuelle (réservé pour filtrage futur).
 
     Returns:
-        {"conversation_id": str, "messages": [{"role", "message", "created_at"}], "count": int}
+        {"conversation_id": str, "messages": [
+            {"role", "message", "created_at"}], "count": int}
 
     Raises:
         HTTPException 500: Erreur de connexion ou de requête MariaDB.
@@ -599,7 +602,8 @@ async def get_conversations(user_id: int = 0, course_id: int = 0):
         course_id: ID du cours Moodle.
 
     Returns:
-        {"conversations": [{"conversation_id", "first_message", "created_at", "message_count"}]}
+        {"conversations": [
+            {"conversation_id", "first_message", "created_at", "message_count"}]}
         {"conversations": []} si aucune conversation existante.
 
     Raises:
@@ -1059,9 +1063,11 @@ async def get_unanswered(course_id: int):
 # ENDPOINT : GÉNÉRER UNE IMAGE EXPLICATIVE DU COURS (SVG via Gemini)
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class GenerateImageRequest(BaseModel):
     course_id:  int
     student_id: int = 0
+    concept:    str = ""
 
 
 @router.get("/list-image-models")
@@ -1103,15 +1109,15 @@ async def generate_image(request: GenerateImageRequest):
         HTTPException 404: Aucun contenu de cours.
         HTTPException 503: Erreur génération Gemini.
     """
+
     import base64
     import json as _json
     import re as _re
 
     # ── Étape 1 : Récupérer le contenu du cours ───────────────────
     try:
-        query_embedding = get_embedding(
-            "concepts principaux définitions résumé schéma illustration cours"
-        )
+        query_text = request.concept if request.concept else "concepts principaux définitions résumé schéma illustration cours" 
+        query_embedding = get_embedding(query_text)
         chunks = search_similar_chunks(
             course_id=request.course_id,
             query_embedding=query_embedding,
@@ -1127,10 +1133,14 @@ async def generate_image(request: GenerateImageRequest):
             detail="Aucun contenu de cours disponible. Importez d'abord des ressources."
         )
 
-    # ── Étape 2 : Construire le contexte du cours ─────────────────
+        # ── Étape 2 : Construire le contexte du cours ─────────────────
+    import re as _re_clean
     course_content = ""
     for i, chunk in enumerate(chunks[:8]):
         text = chunk.get("text", "")
+        text = _re_clean.sub(r'\b\d{1,3}\b', '', text)
+        text = _re_clean.sub(r'\d{1,2}/\d{1,2}/\d{4}', '', text)
+        text = text.strip()
         course_content += f"[Extrait {i+1}]\n{text}\n\n"
     course_content = course_content[:4000]
 
@@ -1138,29 +1148,74 @@ async def generate_image(request: GenerateImageRequest):
     from google import genai as _genai
     from google.genai import types as _types
 
-    _api_key    = os.getenv("GEMINI_API_KEY")
+    _api_key = os.getenv("GEMINI_API_KEY")
     _text_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
-    _client     = _genai.Client(api_key=_api_key)
+    _client = _genai.Client(api_key=_api_key)
 
-    caption      = "Illustration pédagogique des concepts du cours."
+    caption = "Illustration pédagogique des concepts du cours."
     image_prompt = ""
 
     try:
-        # On demande du JSON SANS response_mime_type pour éviter
-        # que certains modèles retournent du JSON mal encodé
-        meta_prompt = f"""Tu es un expert en création de prompts pour Gemini Image Generation.
+        specific_concept = f"\n=== SPECIFIC CONCEPT REQUESTED ===\n{request.concept}\nFocus the image EXCLUSIVELY on this concept.\n" if request.concept else ""
+        meta_prompt = f"""You are a world-class educational illustrator and technical diagram specialist working with Gemini Image Generation.
 
-Voici le contenu d'un cours universitaire :
+Your mission: analyze the course content below, identify the EXACT subject, and generate an extremely detailed and specific image prompt that will produce a high-quality educational diagram.
+
+=== COURSE CONTENT ===
 {course_content[:2500]}
+{specific_concept}
 
-Génère :
-1. UN PROMPT IMAGE en anglais (max 80 mots) illustrant le sujet SPÉCIFIQUE de ce cours.
-   Style : "clean flat design digital illustration, educational infographic style, white background, colorful, professional, no people, no text, no letters, no words in the image"
-   Cible le SUJET du cours directement (si le cours parle d'IA → illustre réseaux de neurones, algorithmes, data flows...).
+=== FEW-SHOT EXAMPLES ===
 
-2. UN CAPTION en FRANÇAIS (10-15 mots, phrase complète, majuscule au début, point à la fin).
+EXAMPLE 1 — UML Course:
+Content keywords: class diagram, sequence diagram, use case, actor, inheritance, association, multiplicity
+→ image_prompt: "UML class diagram showing three light purple rectangular boxes with THREE compartments each: top compartment has bold class name (Animal, Dog, Cat), middle compartment lists typed attributes (name: String, age: Integer), bottom compartment lists methods with parentheses (speak(), move()). Solid line with filled triangle arrowhead pointing from Dog to Animal showing inheritance. Solid line with filled triangle arrowhead pointing from Cat to Animal. Steel blue background for parent class, mint green for child classes. Clean flat design, white background, sharp edges, professional technical diagram, no shadows, no gradients, no generic icons."
+→ caption: "Les diagrammes de classes UML modélisent les relations d'héritage entre les objets du système."
 
-Réponds UNIQUEMENT avec ce JSON valide (doubles guillemets obligatoires, aucun autre texte) :
+EXAMPLE 2 — Artificial Intelligence Course:
+Content keywords: neural network, deep learning, backpropagation, layers, neurons, training, dataset
+→ image_prompt: "Deep learning neural network diagram showing four vertical columns of circles: leftmost column has 4 steel blue input nodes labeled with data icons, two middle columns have 6 coral red hidden layer nodes each connected by thin gray weighted arrows to every node in adjacent columns, rightmost column has 2 amber yellow output nodes. Curved orange backpropagation arrow looping from output back to input along the bottom. Small dataset rectangle in bottom left feeding into input layer with dashed arrow. Clean flat design, white background, sharp edges, professional, no shadows, no generic icons."
+→ caption: "Un réseau de neurones profond apprend par rétropropagation à partir de données d'entraînement."
+
+EXAMPLE 3 — Database Course:
+Content keywords: SQL, tables, primary key, foreign key, joins, relational model, normalization
+→ image_prompt: "Relational database ER diagram showing three entity rectangles: left rectangle labeled STUDENT with oval attributes (StudentID underlined as primary key, Name, Email), center diamond shape labeled ENROLLS with line to both entities showing multiplicity (1 and N), right rectangle labeled COURSE with oval attributes (CourseID underlined, Title, Credits). Steel blue rectangles for entities, amber yellow diamond for relationship, mint green ovals for attributes. Solid lines connecting all shapes. Bottom section shows two SQL table grids with highlighted steel blue primary key column and coral red foreign key column connected by orange JOIN arrow. Clean flat design, white background, sharp edges, professional technical diagram, no shadows, no generic icons."
+→ caption: "Le modèle entité-association représente les données et leurs relations avant la création des tables SQL."
+
+EXAMPLE 4 — Software Architecture Course:
+Content keywords: MVC, Model View Controller, layers, separation of concerns, design pattern
+→ image_prompt: "MVC architecture diagram showing three wide horizontal rectangular layers stacked vertically: top layer is steel blue labeled VIEW with browser icon inside, middle layer is coral red labeled CONTROLLER with gear-free arrow icon inside, bottom layer is mint green labeled MODEL with database cylinder icon inside. Bidirectional solid arrows between VIEW and CONTROLLER labeled request/response, bidirectional solid arrows between CONTROLLER and MODEL labeled query/data. On the right side, a separate amber yellow box shows Observer design pattern with two class boxes: top box labeled Subject with bold title compartment and notify() method compartment, bottom box labeled Observer with update() method compartment, connected by solid line with open arrowhead. Clean flat design, white background, sharp edges, professional, no shadows, no gradients, no generic decorative icons."
+→ caption: "L'architecture MVC sépare la logique métier, la présentation et le contrôle des interactions utilisateur."
+
+EXAMPLE 5 — Marketing Course:
+Content keywords: market segmentation, target audience, positioning, marketing mix, 4P, consumer behavior
+→ image_prompt: "Marketing strategy infographic showing two sections: left section displays a circle divided into four equal colored quadrants (steel blue for Product, coral red for Price, mint green for Place, amber yellow for Promotion) with bold text label inside each quadrant and small relevant icon (box, tag, map pin, megaphone). Right section shows a vertical funnel shape divided into four horizontal segments from wide to narrow: top wide segment in light purple labeled Awareness, second segment in steel blue labeled Interest, third in coral red labeled Decision, narrow bottom in mint green labeled Purchase. Small arrow pointing downward along the funnel right side. Clean flat design, white background, sharp edges, professional infographic style, no shadows, no gradients."
+→ caption: "Le mix marketing 4P et l'entonnoir de conversion guident la stratégie commerciale vers l'achat client."
+
+=== YOUR TASK ===
+Step 1 — Analyze the course content and identify:
+- The EXACT subject (one sentence)
+- The key visual concepts specific to this domain (list 3-5 elements)
+- The most appropriate diagram type (class diagram / sequence diagram / architecture layers / ER diagram / flowchart / infographic / other)
+
+Step 2 — Generate the image_prompt following ALL these rules:
+- Minimum 80 words, maximum 150 words
+- ALWAYS start with the diagram type and subject: "UML class diagram showing...", "Three-layer architecture diagram showing...", "Flowchart showing..."
+- Describe EVERY visual element with exact shapes: "wide rectangular box", "small diamond shape", "vertical dashed lifeline", "horizontal solid arrow"
+- Specify exact colors for EVERY element: "steel blue rectangle", "coral red arrow", "mint green layer", "amber yellow label", "light purple class box"
+- Describe spatial layout precisely: "top-left", "centered", "three equal columns", "vertical stack of four layers", "connected diagonally"
+- For UML class boxes: ALWAYS three compartments (bold class name top / typed attributes middle / methods with () bottom)
+- For arrows: specify exact type ("solid line with filled triangle = inheritance", "dashed line with open arrowhead = dependency", "solid line with diamond = aggregation")
+- NEVER use generic icons (no lightbulbs, no gears, no question marks, no puzzle pieces, no shields)
+- Describe ONE coherent specific diagram, not multiple unrelated elements
+- End ALWAYS with: "clean flat design, white background, sharp edges, professional technical diagram style, no shadows, no gradients, no decorative elements"
+- Match the language of labels in the image to the language of the course content
+
+Step 3 — Generate the caption:
+- In FRENCH, 10-15 words, complete sentence, starts with capital letter, ends with period
+- Describes exactly what the specific diagram represents in relation to the course
+
+Respond ONLY with this valid JSON (double quotes mandatory, absolutely zero extra text before or after):
 {{"image_prompt": "...", "caption": "..."}}"""
 
         meta_resp = _client.models.generate_content(
@@ -1168,19 +1223,21 @@ Réponds UNIQUEMENT avec ce JSON valide (doubles guillemets obligatoires, aucun 
             contents=meta_prompt,
             config=_types.GenerateContentConfig(
                 temperature=0.4,
-                max_output_tokens=500,
+                max_output_tokens=2048,
+                response_mime_type="application/json",
             )
         )
 
         raw = meta_resp.text.strip() if meta_resp.text else ""
-        # Nettoyer les fences markdown
         raw = _re.sub(r"```(?:json)?\s*", "", raw)
         raw = _re.sub(r"```", "", raw).strip()
-        # Extraire le premier objet JSON trouvé dans la réponse
-        json_match = _re.search(r"\{[\s\S]*?\}", raw)
-        if not json_match:
+        brace_start = raw.find("{")
+        brace_end = raw.rfind("}")
+        if brace_start >= 0 and brace_end > brace_start:
+            json_match_str = raw[brace_start:brace_end + 1]
+            meta_data = _json.loads(json_match_str)
+        else:
             raise ValueError(f"Aucun JSON trouvé dans : {raw[:200]}")
-        meta_data = _json.loads(json_match.group(0))
 
         image_prompt = meta_data.get("image_prompt", "").strip()
         caption      = meta_data.get("caption", caption).strip()
@@ -1191,7 +1248,7 @@ Réponds UNIQUEMENT avec ce JSON valide (doubles guillemets obligatoires, aucun 
 
     except Exception as e:
         logger.warning("Erreur génération prompt image : %s", str(e))
-        first_words  = " ".join(course_content.split()[:40])
+        first_words = " ".join(course_content.split()[:40])
         image_prompt = (
             f"Clean flat design educational illustration about: {first_words}. "
             "White background, colorful icons, no text, professional infographic style, no letters."
@@ -1203,25 +1260,18 @@ Réponds UNIQUEMENT avec ce JSON valide (doubles guillemets obligatoires, aucun 
             "white background, learning concepts diagram, no text, professional."
         )
 
-    # ── Étape 4 : Gemini Image Generation ("Nano Banana") ─────────
-    # Imagen est définitivement arrêté depuis juin 2026.
-    # Le remplacement officiel est "gemini-2.5-flash-image" (Nano Banana).
-    # On essaie plusieurs variantes dans l'ordre au cas où le compte
-    # aurait accès à une version différente.
+    # ── Étape 4 : Gemini Image Generation ─────────────────────────
     IMAGE_MODELS_TO_TRY = [
-        "gemini-2.5-flash-image",      # Nano Banana — modèle officiel actuel (recommandé)
-        "gemini-3.1-flash-image",      # Nano Banana gen suivante (si disponible)
-        "gemini-3.1-flash-lite-image", # Variante lite
-        "gemini-2.5-flash-preview-05-20",  # Preview avec IMAGE modality
+        "gemini-2.5-flash-image",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite-image",
+        "gemini-2.5-flash-preview-05-20",
     ]
 
     last_error = None
     for img_model in IMAGE_MODELS_TO_TRY:
         try:
             logger.info("Essai modèle image : %s", img_model)
-
-            # Tous les modèles Nano Banana utilisent generate_content()
-            # avec response_modalities=["IMAGE"]
             img_response = _client.models.generate_content(
                 model=img_model,
                 contents=image_prompt,
@@ -1261,158 +1311,12 @@ Réponds UNIQUEMENT avec ce JSON valide (doubles guillemets obligatoires, aucun 
             last_error = e
             continue
 
-    # Tous les modèles ont échoué
     logger.error("Tous les modèles image ont échoué. Dernier : %s", str(last_error))
     raise HTTPException(
         status_code=503,
         detail=(
             f"Aucun modèle Gemini image disponible sur ce compte. "
-            f"Appelle GET /list-image-models pour voir les modèles disponibles. "
             f"Dernière erreur : {str(last_error)}"
         )
     )
-    import base64
-    import json as _json
-    import re as _re
-
-    # ── Étape 1 : Récupérer le contenu du cours ───────────────────
-    try:
-        query_embedding = get_embedding(
-            "concepts principaux définitions résumé schéma illustration cours"
-        )
-        chunks = search_similar_chunks(
-            course_id=request.course_id,
-            query_embedding=query_embedding,
-            n_results=8
-        )
-    except Exception as e:
-        logger.error("Erreur ChromaDB /generate-image : %s", str(e))
-        chunks = []
-
-    if not chunks:
-        raise HTTPException(
-            status_code=404,
-            detail="Aucun contenu de cours disponible. Importez d'abord des ressources."
-        )
-
-    # ── Étape 2 : Construire le contexte du cours ─────────────────
-    course_content = ""
-    for i, chunk in enumerate(chunks[:8]):
-        text = chunk.get("text", "")
-        course_content += f"[Extrait {i+1}]\n{text}\n\n"
-    course_content = course_content[:4000]
-
-    # ── Étape 3 : Gemini text → prompt image EN + caption FR ──────
-    from google import genai as _genai
-    from google.genai import types as _types
-
-    _api_key = os.getenv("GEMINI_API_KEY")
-    _text_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-    _client = _genai.Client(api_key=_api_key)
-
-    caption = "Illustration pédagogique des concepts du cours."
-    image_prompt = ""
-
-    try:
-        meta_prompt = f"""Tu es un expert en création de prompts pour Gemini Image Generation.
-
-Voici le contenu d'un cours universitaire :
-{course_content[:2500]}
-
-Ta tâche — génère deux choses :
-
-1. UN PROMPT IMAGE en anglais (max 80 mots) pour illustrer le sujet principal de ce cours.
-   RÈGLES STRICTES :
-   - Décris une illustration pédagogique claire et professionnelle en lien DIRECT avec le sujet du cours.
-   - Style imposé : "clean flat design digital illustration, educational infographic style, white background, colorful, professional, no people, no text, no letters, no words"
-   - Cible le SUJET SPÉCIFIQUE du cours (ex: si le cours parle d'IA → illustre des réseaux de neurones, algorithmes, data...)
-   - NE mets PAS de texte ou lettres dans la scène.
-
-2. UN CAPTION en FRANÇAIS (phrase complète, 10-15 mots max, commence par majuscule, se termine par un point).
-   - Décris précisément ce que l'image représente en lien avec le cours.
-
-Retourne UNIQUEMENT ce JSON valide, sans markdown :
-{{"image_prompt": "...", "caption": "..."}}"""
-
-        meta_resp = _client.models.generate_content(
-            model=_text_model,
-            contents=meta_prompt,
-            config=_types.GenerateContentConfig(
-                temperature=0.5,
-                max_output_tokens=400,
-                response_mime_type="application/json",
-            )
-        )
-        meta_raw = meta_resp.text.strip() if meta_resp.text else "{}"
-        meta_raw = _re.sub(r"```(?:json)?\s*", "", meta_raw)
-        meta_raw = _re.sub(r"```", "", meta_raw).strip()
-        meta_data = _json.loads(meta_raw)
-
-        image_prompt = meta_data.get("image_prompt", "").strip()
-        caption      = meta_data.get("caption", caption).strip()
-        if not caption.endswith("."):
-            caption += "."
-
-        logger.info("Prompt image généré par Gemini : %s", image_prompt)
-
-    except Exception as e:
-        logger.warning("Erreur génération prompt image : %s", str(e))
-        # Fallback : construire un prompt minimal depuis les premiers mots du cours
-        first_words = " ".join(course_content.split()[:30])
-        image_prompt = (
-            f"Clean flat design educational illustration about: {first_words}. "
-            "White background, colorful icons, no text, professional infographic style."
-        )
-
-    if not image_prompt:
-        image_prompt = (
-            "Educational infographic illustration, clean flat design, colorful, "
-            "white background, learning concepts diagram, no text, professional."
-        )
-
-    # ── Étape 4 : Gemini Image Generation ────────────────────────
-    # Modèle dédié à la génération d'images dans l'API Gemini
-    IMAGE_MODEL = "gemini-2.0-flash-preview-image-generation"
-
-    try:
-        img_resp = _client.models.generate_content(
-            model=IMAGE_MODEL,
-            contents=image_prompt,
-            config=_types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"],
-                temperature=1.0,
-            )
-        )
-
-        # Extraire la partie image de la réponse
-        img_b64  = None
-        mime     = "image/png"
-
-        for part in (img_resp.candidates[0].content.parts if img_resp.candidates else []):
-            if hasattr(part, "inline_data") and part.inline_data:
-                img_bytes = part.inline_data.data
-                mime      = part.inline_data.mime_type or "image/png"
-                # inline_data.data peut être bytes ou déjà b64 selon la version du SDK
-                if isinstance(img_bytes, (bytes, bytearray)):
-                    img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-                else:
-                    img_b64 = img_bytes  # déjà une str base64
-                break
-
-        if not img_b64:
-            raise ValueError("Gemini Image Generation n'a retourné aucune image")
-
-        logger.info("Image Gemini générée — course=%s mime=%s", request.course_id, mime)
-        return {
-            "image_b64": img_b64,
-            "mime_type": mime,
-            "caption":   caption,
-            "prompt":    image_prompt
-        }
-
-    except Exception as e:
-        logger.error("Erreur Gemini Image Generation : %s", str(e))
-        raise HTTPException(
-            status_code=503,
-            detail=f"Erreur génération image Gemini : {str(e)}"
-        )
+   

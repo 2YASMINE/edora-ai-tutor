@@ -73,6 +73,22 @@ TABLES = {
             PRIMARY KEY (`id`),
             KEY `idx_course` (`course_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    "mdl_edora_xp": """
+        CREATE TABLE IF NOT EXISTS `mdl_edora_xp` (
+            `id`               INT(11)      NOT NULL AUTO_INCREMENT,
+            `user_id`          INT(11)      NOT NULL,
+            `course_id`        INT(11)      NOT NULL,
+            `xp`               INT(11)      NOT NULL DEFAULT 0,
+            `badges`           TEXT         DEFAULT '[]',
+            `questions_count`  INT(11)      NOT NULL DEFAULT 0,
+            `quizzes_count`    INT(11)      NOT NULL DEFAULT 0,
+            `created_at`       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            `updated_at`       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unique_user_course` (`user_id`, `course_id`),
+            KEY `idx_user_course` (`user_id`, `course_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """
 }
 

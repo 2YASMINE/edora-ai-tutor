@@ -38,38 +38,21 @@ def get_connection():
     )
 
 
-def save_message(user_id: int, course_id: int, conversation_id: str, role: str, message: str):
-    """
-    Sauvegarde un message dans la table mdl_edora_conversations.
-
-    Appelée deux fois par question : une fois pour le message "user"
-    (question de l'étudiant) et une fois pour le message "assistant"
-    (réponse d'Edo). Le conversation_id permet de regrouper les messages
-    d'une même session de chat.
-
-    Args:
-        user_id:         Identifiant Moodle de l'étudiant (vrai ID, pas pseudonymisé).
-        course_id:       Identifiant du cours Moodle.
-        conversation_id: UUID unique de la conversation (ex: "conv-1786710816896").
-        role:            Rôle de l'auteur du message — "user" | "assistant" | "system".
-        message:         Contenu textuel du message.
-    """
+def save_message(user_id: int, course_id: int, conversation_id: str, role: str, message: str, task_type: str = None):
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO mdl_edora_conversations
-            (user_id, course_id, conversation_id, role, message)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (user_id, course_id, conversation_id, role, message))
+            (user_id, course_id, conversation_id, role, message, task_type)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (user_id, course_id, conversation_id, role, message, task_type))
         conn.commit()
         cursor.close()
         conn.close()
-        logger.info(f"Message sauvegardé — conversation_id={conversation_id} role={role}")
+        logger.info(f"Message sauvegardé — conversation_id={conversation_id} role={role} task_type={task_type}")
     except Exception as e:
         logger.error(f"Erreur sauvegarde message : {str(e)}")
-
-
 def get_history(conversation_id: str) -> list:
     """
     Récupère tous les messages d'une conversation dans l'ordre chronologique.
