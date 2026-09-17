@@ -1156,7 +1156,11 @@ async def generate_image(request: GenerateImageRequest):
     image_prompt = ""
 
     try:
-        specific_concept = f"\n=== SPECIFIC CONCEPT REQUESTED ===\n{request.concept}\nFocus the image EXCLUSIVELY on this concept.\n" if request.concept else ""
+        specific_concept = (
+    f"\n=== SPECIFIC CONCEPT REQUESTED ===\n{request.concept}\nFocus the image EXCLUSIVELY on this concept.\n"
+    if request.concept else
+    "\n=== COURSE OVERVIEW REQUESTED ===\nNo specific concept was requested. Generate a SINGLE comprehensive diagram that visually represents ALL the main concepts of this course and their relationships. The diagram must be a global overview — like a visual syllabus — showing how the key topics connect to each other.\n"
+)
         meta_prompt = f"""You are a world-class educational illustrator and technical diagram specialist working with Gemini Image Generation.
 
 Your mission: analyze the course content below, identify the EXACT subject, and generate an extremely detailed and specific image prompt that will produce a high-quality educational diagram.

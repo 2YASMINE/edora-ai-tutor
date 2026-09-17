@@ -27,6 +27,28 @@ if (!in_array($theme, ['dark', 'light'])) {
     $theme = 'light';
 }
 
+$selected_period = optional_param('period', 'all', PARAM_ALPHA);
+switch ($selected_period) {
+    case 'day':
+        $period_filter         = 'AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)';
+        $period_filter_no_alias = 'AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)';
+        break;
+    case 'week':
+        $period_filter         = 'AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+        $period_filter_no_alias = 'AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+        break;
+    case 'month':
+        $period_filter         = 'AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+        $period_filter_no_alias = 'AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+        break;
+    default:
+        $period_filter         = '';
+        $period_filter_no_alias = '';
+}
+
+
+
+
 // ══════════════════════════════════════════════════════════════════════════════
 // GARDE : vérifier l'existence des tables avant toute requête
 // ══════════════════════════════════════════════════════════════════════════════
@@ -92,26 +114,27 @@ if ($has_conversations) {
     }
 
     $top_courses = $DB->get_records_sql("
-        SELECT
-            ec.course_id,
-            c.fullname,
-            COUNT(*)                 AS nb_conversations,
-            COUNT(DISTINCT user_id)  AS nb_etudiants
-        FROM {edora_conversations} ec
-        LEFT JOIN {course} c ON c.id = ec.course_id
-        GROUP BY ec.course_id, c.fullname
-        ORDER BY nb_conversations DESC
-        LIMIT 8
-    ");
+    SELECT
+        ec.course_id,
+        c.fullname,
+        COUNT(*)                 AS nb_conversations,
+        COUNT(DISTINCT user_id)  AS nb_etudiants
+    FROM {edora_conversations} ec
+    LEFT JOIN {course} c ON c.id = ec.course_id
+    WHERE 1=1 $period_filter
+    GROUP BY ec.course_id, c.fullname
+    ORDER BY nb_conversations DESC
+    LIMIT 8
+");
 
     $task_distribution = $DB->get_records_sql("
-        SELECT task_type, COUNT(*) AS nb
-        FROM {edora_conversations}
-        WHERE task_type IS NOT NULL
-        GROUP BY task_type
-        ORDER BY nb DESC
-        LIMIT 6
-    ");
+    SELECT task_type, COUNT(*) AS nb
+    FROM {edora_conversations} 
+    WHERE task_type IS NOT NULL $period_filter_no_alias
+    GROUP BY task_type
+    ORDER BY nb DESC
+    LIMIT 6
+");
 
     $recent_activity = $DB->get_records_sql("
         SELECT

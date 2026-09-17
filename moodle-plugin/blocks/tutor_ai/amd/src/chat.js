@@ -1666,30 +1666,103 @@ function loadXpWidget(apiUrl, courseId) {
         var color = levelColors[data.level] || '#0a9396';
         var percent = data.next_level_xp ? Math.round((data.xp / data.next_level_xp) * 100) : 100;
 
-        widget.innerHTML = [
-            '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;',
-            'background:var(--edo-bg,#f8fffe);border-radius:10px;',
-            'border:1.5px solid var(--edo-border,#e0f0ef);margin-bottom:8px;">',
-            '<div style="font-size:18px;">⚡</div>',
-            '<div style="flex:1;">',
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">',
-            '<span style="font-size:12px;font-weight:700;color:', color, ';">', data.level, '</span>',
-            '<span style="font-size:12px;font-weight:600;color:var(--edo-text,#1a1a2e);">', data.xp, ' XP</span>',
-            '</div>',
-            '<div style="background:#e0f0ef;border-radius:4px;height:6px;overflow:hidden;">',
-            '<div style="width:', Math.min(percent, 100), '%;height:100%;',
-            'background:linear-gradient(90deg,#0a9396,', color, ');border-radius:4px;',
-            'transition:width 0.5s ease;"></div>',
-            '</div>',
-            data.next_level_xp ? '<div style="font-size:10px;color:var(--edo-text-muted,#6b7280);margin-top:2px;">' + data.xp + ' / ' + data.next_level_xp + ' XP</div>' : '',
-            '</div></div>',
-            data.badges && data.badges.length > 0 ?
-                '<div style="display:flex;flex-wrap:wrap;gap:4px;padding:0 4px;">' +
-                data.badges.map(b => '<span style="font-size:11px;background:var(--edo-bg,#f0f7f6);border:1px solid var(--edo-border,#e0f0ef);border-radius:6px;padding:2px 7px;">' + b.label + '</span>').join('') +
-                '</div>' : ''
-        ].join('');
-    })
+   widget.innerHTML = [
+    '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;',
+    'background:var(--edo-bg,#f8fffe);border-radius:10px;',
+    'border:1.5px solid var(--edo-border,#e0f0ef);margin-bottom:8px;">',
+    
+    '<div style="font-size:20px;">⚡</div>',
+    '<div style="flex:1;">',
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">',
+    '<span style="font-size:13px;font-weight:700;color:', color, ';">', data.level, '</span>',
+    '<span style="font-size:13px;font-weight:700;color:var(--edo-text,#1a1a2e);">', data.xp, ' XP</span>',
+    '</div>',
+    '<div style="background:#e0f0ef;border-radius:4px;height:7px;overflow:hidden;">',
+    '<div style="width:', Math.min(percent, 100), '%;height:100%;',
+    'background:linear-gradient(90deg,#0a9396,', color, ');border-radius:4px;',
+    'transition:width 0.5s ease;"></div>',
+    '</div>',
+    data.next_level_xp ? '<div style="font-size:10px;color:var(--edo-text-muted,#6b7280);margin-top:2px;">' + data.xp + ' / ' + data.next_level_xp + ' XP</div>' : '',
+    '</div>',
+    
+    // Cloche
+    '<div id="edo-notif-bell" style="position:relative;cursor:pointer;margin-left:4px;">',
+    '<span style="font-size:20px;">🔔</span>',
+    (data.badges && data.badges.length > 0 ?
+        '<span style="position:absolute;top:-4px;right:-4px;background:#e63946;color:white;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;">' + data.badges.length + '</span>'
+        : ''),
+    '</div>',
+    '</div>',
+
+    // Panneau notifications
+    '<div id="edo-notif-panel" style="display:none;position:absolute;top:60px;right:10px;',
+    'background:white;border:1px solid #e0f0ef;border-radius:10px;',
+    'box-shadow:0 4px 20px rgba(0,0,0,0.1);padding:12px;min-width:220px;z-index:9999;">',
+    
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">',
+    '<span style="font-weight:700;font-size:13px;">Notifications</span>',
+    '<span id="edo-voir-tout" style="font-size:11px;color:#0a9396;cursor:pointer;">Tout voir</span>',
+    '</div>',
+    
+    // Badges récents (toujours visibles)
+    data.badges && data.badges.length > 0 ?
+        data.badges.slice(0, 2).map(b =>
+            '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;">' +
+            '<span style="font-size:18px;">🏆</span>' +
+            '<div><div style="font-size:12px;font-weight:600;">' + b.label + '</div>' +
+            '<div style="font-size:11px;color:#6b7280;">Badge débloqué !</div></div>' +
+            '<div style="margin-left:auto;font-size:10px;color:#6b7280;">À l\'instant</div>' +
+            '</div>'
+        ).join('') : '<div style="font-size:12px;color:#6b7280;">Aucune notification</div>',
+
+    // Tous les badges (masqués par défaut)
+    '<div id="edo-badges-liste" style="display:none;margin-top:8px;border-top:1px solid #f0f0ef;padding-top:8px;">',
+    data.badges && data.badges.length > 2 ?
+        data.badges.slice(2).map(b =>
+            '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;">' +
+            '<span style="font-size:18px;">🏆</span>' +
+            '<div><div style="font-size:12px;font-weight:600;">' + b.label + '</div>' +
+            '<div style="font-size:11px;color:#6b7280;">Badge débloqué !</div></div>' +
+            '</div>'
+        ).join('') : '',
+    '</div>',
+
+    '</div>'
+].join('');
+
+// Event listeners
+var bell = document.getElementById('edo-notif-bell');
+if (bell) {
+    bell.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var panel = document.getElementById('edo-notif-panel');
+        if (panel) {
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+    });
+}
+
+var voirTout = document.getElementById('edo-voir-tout');
+if (voirTout) {
+    voirTout.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var liste = document.getElementById('edo-badges-liste');
+        if (liste) {
+            liste.style.display = liste.style.display === 'none' ? 'block' : 'none';
+            voirTout.textContent = liste.style.display === 'none' ? 'Tout voir' : 'Réduire';
+        }
+    });
+}
+
+document.addEventListener('click', function() {
+    var panel = document.getElementById('edo-notif-panel');
+    if (panel) panel.style.display = 'none';
+});
+})
     .catch(() => {});
 }
+
+
+
 
 })();

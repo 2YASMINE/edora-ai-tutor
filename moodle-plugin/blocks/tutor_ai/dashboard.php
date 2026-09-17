@@ -92,16 +92,20 @@ if (!in_array($selected_period, $allowed_periods)) {
 // Filtre SQL selon la période
 switch ($selected_period) {
     case 'day':
-        $period_filter = "AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)";
+        $period_filter         = 'AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)';
+        $period_filter_no_alias = 'AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)';
         break;
     case 'week':
-        $period_filter = "AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+        $period_filter         = 'AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+        $period_filter_no_alias = 'AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
         break;
     case 'month':
-        $period_filter = "AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+        $period_filter         = 'AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+        $period_filter_no_alias = 'AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
         break;
     default:
-        $period_filter = "";
+        $period_filter         = '';
+        $period_filter_no_alias = '';
 }
 $teacher_course_ids = array_map('intval', array_keys($teacher_courses));
 
@@ -173,7 +177,7 @@ if ($has_conversations) {
             task_type,
             COUNT(*) AS nb_questions
         FROM {edora_conversations}
-        WHERE course_id = :course_id 
+        WHERE course_id = :course_id $period_filter_no_alias AND task_type IS NOT NULL
           AND task_type IS NOT NULL
           AND task_type NOT IN ('distress', 'exam')
         GROUP BY task_type
@@ -189,7 +193,7 @@ if ($has_conversations) {
             COUNT(CASE WHEN student_level = 'intermediaire' THEN 1 END) AS intermediaires,
             COUNT(CASE WHEN student_level = 'avance'        THEN 1 END) AS avances
         FROM {edora_conversations}
-        WHERE course_id = :course_id $period_filter
+        WHERE course_id = :course_id $period_filter_no_alias
           AND student_level IS NOT NULL
         GROUP BY DATE_FORMAT(created_at, '%Y-%u')
         ORDER BY semaine ASC
@@ -221,7 +225,7 @@ if ($has_conversations) {
             student_level,
             COUNT(DISTINCT user_id) AS nb_etudiants
         FROM {edora_conversations}
-        WHERE course_id = :course_id $period_filter
+        WHERE course_id = :course_id $period_filter_no_alias
           AND student_level IS NOT NULL
         GROUP BY student_level
     ", ['course_id' => $selected_course]);
@@ -233,7 +237,7 @@ if ($has_conversations) {
             DAYNAME(created_at)   AS jour_nom,
             COUNT(*)              AS nb_interactions
         FROM {edora_conversations}
-        WHERE course_id = :course_id 
+        WHERE course_id = :course_id $period_filter_no_alias AND task_type IS NOT NULL
         GROUP BY DAYOFWEEK(created_at), DAYNAME(created_at)
         ORDER BY DAYOFWEEK(created_at)
     ", ['course_id' => $selected_course]);
