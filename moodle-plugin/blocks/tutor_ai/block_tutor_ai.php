@@ -8,7 +8,7 @@ class block_tutor_ai extends block_base {
     }
 
     public function get_content() {
-        $url = new moodle_url($CFG->wwwroot . '/blocks/tutor_ai/admin_dashboard.php');
+        global $OUTPUT, $USER, $DB, $CFG;
 
         if ($this->content !== null) {
             return $this->content;
@@ -91,21 +91,21 @@ class block_tutor_ai extends block_base {
         // ============================================================
         // 3. ETUDIANT
         // ============================================================
-        $url     = 'http://host.docker.internal:8000/health';
-        $ch      = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-        $response  = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
-        if ($http_code !== 200) {
-            $this->content->text = '<div class="edo-unavailable">
-                <span class="edo-dot edo-dot--red"></span>
-                Edo est indisponible pour le moment.
-            </div>';
+        // Bug fix 2 : ne pas afficher le chat si l'utilisateur est déconnecté ou guest
+        if (!isloggedin() || isguestuser()) {
+            $this->content->text = '';
             return $this->content;
         }
+
+        // Bug fix 1 : le chat étudiant n'a de sens que dans une page de cours
+        if ($courseid <= SITEID) {
+            $this->content->text = '';
+            return $this->content;
+        }
+
+        // Health check désactivé temporairement — toujours afficher le chat
+        // $health_ok = false; (désactivé)
 
         $student_id  = (int)$USER->id;
         $api_url     = 'http://localhost:8000';
