@@ -351,3 +351,211 @@ def pseudonymize_id(user_id: int) -> str:
 **Participants :** Yasmine, Islem
 **Décision :** Streaming non implémenté.
 **Raison :** Incompatible avec le cache sémantique et le parsing JSON du quiz. Amélioration future possible pour les modes `chat` et `expliquer` uniquement.
+
+---
+
+## Incrémentation obligatoire de `version.php`
+**Date :** Juillet 2026
+**Participants :** Yasmine, Islem
+
+### Décision
+Incrémenter systématiquement le numéro de version dans `version.php` à chaque ajout de fichier ou modification structurelle du plugin.
+
+---
+
+## Génération d'image pédagogique via Gemini Image
+**Date :** Septembre 2026
+**Participants :** Islem 
+
+### Décision
+Utiliser `gemini-2.5-flash-image` (Nano Banana) pour générer des images éducatives à partir du contenu du cours.
+
+### Pipeline retenu
+```
+ChromaDB → 8 chunks pertinents
+    ↓
+gemini-3.5-flash → prompt image EN + caption FR (JSON)
+    ↓
+gemini-2.5-flash-image → image PNG en base64
+```
+
+### Raison
+Imagen et `gemini-2.0-flash-preview-image-generation` sont arrêtés depuis juin 2026. `gemini-2.5-flash-image` est le seul modèle image disponible sur le compte gratuit.
+
+### Note
+Les modèles Imagen ne réapparaissent pas dans `/list-image-models` malgré leur ancien fonctionnement — l'endpoint de diagnostic utilise `supported_generation_methods` qui ne remonte pas toujours les capacités image.
+
+---
+
+## Parsing JSON robuste pour la génération d'image
+**Date :** Septembre 2026
+**Participants :** Yasmine
+
+### Décision
+Remplacer le regex greedy `\{[\s\S]*?\}` par extraction via `raw.find("{")` + `raw.rfind("}")`.
+
+### Raison
+Le regex avec `?` (non-greedy) s'arrêtait au premier `}` rencontré, coupant le JSON à mi-chemin. `rfind` garantit la prise du dernier `}` = JSON complet.
+
+### Paramètres finaux
+| Paramètre | Valeur |
+|---|---|
+| `max_output_tokens` | `2048` |
+| `response_mime_type` | `"application/json"` |
+| `temperature` | `0.4` |
+
+### Alternative écartée
+Regex greedy `\{[\s\S]*\}` — toujours instable selon la longueur de la réponse.
+
+---
+
+## Prompt few-shot pour la génération d'image
+**Date :** Septembre 2026
+**Participants :** Yasmine
+
+### Décision
+Remplacer le prompt générique par un prompt few-shot avec 5 exemples domaine-spécifiques : UML, IA, Base de données, Architecture logicielle, Marketing.
+
+### Raison
+Sans few-shot, Gemini générait des icônes génériques (ampoules, engrenages, boucliers) sans rapport avec le contenu. Avec few-shot, il produit des diagrammes techniques précis — classes UML avec compartiments, flèches typées, couches architecturales.
+
+### Règles CRITICAL du prompt
+- Minimum 80 mots
+- Shapes exactes, couleurs par élément, layout spatial précis
+- Jamais d'icônes génériques
+- ONE coherent diagram
+
+### Résultat
+Diagrammes UML avec 3 compartiments, flèches héritage/agrégation correctes, labels en langue du cours.
+
+---
+
+## Détection d'image par message dans le chat
+**Date :** Septembre 2026
+**Participants :**Islem + Yasmine
+
+### Décision
+Détecter les mots-clés image dans `sendQuestion()` avant l'appel à `/ask`, et router vers `triggerGenerateImage()` avec extraction du concept.
+
+### Raison
+L'étudiant ne pouvait déclencher la génération que via le bouton Image dans les raccourcis. La détection par message permet de cibler un concept précis (ex. *"génère une image sur l'héritage UML"*).
+
+### Mots-clés détectés
+`génère une image` · `illustre` · `montre moi une image` · `image de` · `image sur` · `visualise` · `dessine` · `schéma de` · `generate image` · `draw`
+
+### Note
+Le check `isSmallTalk()` ne s'applique pas ici — la détection image court-circuite avant.
+
+---
+
+## Paramètre `concept` dans `/generate-image`
+**Date :** Septembre 2026
+**Participants :**Islem
+
+### Décision
+Ajouter `concept: str = ""` dans `GenerateImageRequest`. Si fourni, il remplace la query d'embedding générique par le concept demandé.
+
+### Raison
+Sans concept ciblé, ChromaDB retourne les chunks les plus généraux du cours. Avec le concept, l'image porte sur le sujet précis demandé par l'étudiant.
+
+### Implémentation
+```python
+query_text = request.concept if request.concept else \
+    "concepts principaux définitions résumé schéma illustration cours"
+```
+
+---
+
+## Système de récompenses XP
+**Date :** Septembre 2026
+**Participants :** Yasmine
+
+### Décision
+Gamification via table `mdl_edora_xp` avec XP, badges et niveaux progressifs.
+
+### Niveaux
+Bronze → Argent → Or → Platine → Diamant
+
+### Règles XP
+| Action | XP |
+|---|---|
+| Question | +5 |
+| Quiz terminé | +20 |
+| Quiz parfait | +50 |
+
+### Badges
+| Badge | Condition |
+|---|---|
+| 🌱 Première question | 1 question posée |
+| 🔥 Curieux | 10 questions posées |
+| 🏆 Quiz Master | 5 quiz complétés |
+| 📚 Chercheur de savoir | 100 XP atteints |
+| 🚀 Expert | 500 XP atteints |
+
+### Note
+Le XP n'est pas accordé pour le small talk — vérification `isSmallTalk()` côté JS avant l'appel `/xp/add`.
+
+### Alternative écartée
+Barre de progression seule (feature Islem) — insuffisant pour la gamification. Les deux coexistent.
+
+---
+
+## Logging `task_type` dans `edora_conversations`
+**Date :** Septembre 2026
+**Participants :** Yasmine
+
+### Décision
+Ajouter `task_type` comme paramètre optionnel dans `save_message()` et le persister dans `mdl_edora_conversations`.
+
+### Raison
+La colonne existait mais n'était jamais remplie. Le logging permet au dashboard enseignant d'afficher la répartition des types de requêtes (ex. *"40% quiz, 30% explications"*) pour identifier les besoins pédagogiques.
+
+### Implémentation
+```python
+save_message(..., task_type=None)  # backward-compatible, aucune migration nécessaire
+```
+
+---
+
+## Period filters dans le dashboard enseignant
+**Date :** Septembre 2026
+**Participants :** Yasmine
+
+### Décision
+Ajouter un filtre temporel dans `dashboard.php` via `$period_filter` injecté dans les requêtes SQL.
+
+### Options disponibles
+Aujourd'hui · Cette semaine · Ce mois · Tout
+
+### Raison
+Les enseignants voulaient voir l'activité récente séparément de l'historique complet.
+
+### Bug connu
+`$heatmap_data` et `$activite_hebdo` n'ont pas d'alias `ec.` — le filtre `ec.created_at` y cause une erreur SQL.
+
+**Fix :** créer `$period_filter_no_alias` sans préfixe de table.
+
+### Statut
+⚠️ Partiellement implémenté — 4 requêtes filtrées sur 6.
+
+---
+
+## Course selector dans le dashboard enseignant
+**Date :** Septembre 2026
+**Participants :** Yasmine
+
+### Décision
+Remplacer `$courses_with_data` par `$teacher_courses` dans le sélecteur de cours du dashboard.
+
+### Raison
+`$courses_with_data` filtrait uniquement les cours ayant déjà des conversations Edora. Un enseignant sur un nouveau cours ne pouvait pas accéder au dashboard pour ce cours.
+
+### Fix
+```php
+// Avant
+foreach ($courses_with_data as $c) { ... $c->course_id ... }
+
+// Après
+foreach ($teacher_courses as $c) { ... $c->id ... }
+```
+

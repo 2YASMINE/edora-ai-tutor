@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edora AI Tutor — Guide Administrateur</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #181c27;
+    --surface2: #1e2334;
+    --border: #2a3050;
+    --accent: #6c8fff;
+    --accent2: #a78bfa;
+    --green: #34d399;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --text: #e2e8f0;
+    --text-muted: #7c8db5;
+    --text-dim: #4a5680;
+    --font: 'Inter', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  /* Layout */
+  .shell { display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  nav {
+    width: 260px;
+    min-width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 32px 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  .nav-logo {
+    padding: 0 24px 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+
+  .logo-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: .03em;
+  }
+
+  .logo-icon {
+    width: 30px; height: 30px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+  }
+
+  .nav-section {
+    padding: 0 16px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-top: 16px;
+  }
+
+  nav a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    margin: 1px 8px;
+    border-radius: 7px;
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 13.5px;
+    transition: background .15s, color .15s;
+  }
+
+  nav a:hover { background: var(--surface2); color: var(--text); }
+  nav a.active { background: rgba(108,143,255,.12); color: var(--accent); }
+
+  .nav-icon { font-size: 14px; opacity: .8; width: 18px; text-align: center; }
+
+  /* Main */
+  main {
+    flex: 1;
+    max-width: 860px;
+    padding: 56px 60px;
+  }
+
+  /* Hero */
+  .hero {
+    margin-bottom: 64px;
+    padding-bottom: 48px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hero-tag {
+    display: inline-block;
+    background: rgba(108,143,255,.15);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(108,143,255,.2);
+  }
+
+  h1 {
+    font-size: 38px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #fff;
+    margin-bottom: 16px;
+    letter-spacing: -.02em;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .hero-desc {
+    color: var(--text-muted);
+    font-size: 16px;
+    max-width: 560px;
+    line-height: 1.7;
+    margin-bottom: 28px;
+  }
+
+  .hero-meta {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+
+  .meta-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+
+  /* Sections */
+  section { margin-bottom: 56px; }
+
+  h2 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 6px;
+    letter-spacing: -.01em;
+  }
+
+  .section-desc {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 28px;
+    line-height: 1.6;
+  }
+
+  h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 12px;
+    margin-top: 28px;
+  }
+
+  p { color: var(--text-muted); line-height: 1.7; margin-bottom: 14px; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card p { margin-bottom: 0; font-size: 14px; }
+
+  /* Steps */
+  .steps { counter-reset: step; }
+
+  .step {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 24px;
+    position: relative;
+  }
+
+  .step::after {
+    content: '';
+    position: absolute;
+    left: 19px;
+    top: 44px;
+    bottom: -8px;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .step:last-child::after { display: none; }
+
+  .step-num {
+    counter-increment: step;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+
+  .step-body { padding-top: 6px; }
+  .step-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .step-desc { font-size: 13.5px; color: var(--text-muted); line-height: 1.6; }
+
+  /* Code blocks */
+  pre {
+    background: #0a0d14;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: #c9d1e8;
+    overflow-x: auto;
+    margin: 16px 0;
+    line-height: 1.7;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: rgba(108,143,255,.1);
+    color: var(--accent);
+    padding: 2px 7px;
+    border-radius: 5px;
+  }
+
+  pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+  .comment { color: #4a5e8a; }
+  .string { color: #a5d6a7; }
+  .key { color: #90caf9; }
+  .val { color: #f48fb1; }
+  .cmd { color: var(--green); }
+
+  /* Badge / pill */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+
+  .badge-green { background: rgba(52,211,153,.12); color: var(--green); border: 1px solid rgba(52,211,153,.2); }
+  .badge-yellow { background: rgba(251,191,36,.12); color: var(--yellow); border: 1px solid rgba(251,191,36,.2); }
+  .badge-red { background: rgba(248,113,113,.12); color: var(--red); border: 1px solid rgba(248,113,113,.2); }
+  .badge-blue { background: rgba(108,143,255,.12); color: var(--accent); border: 1px solid rgba(108,143,255,.2); }
+
+  /* Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin: 16px 0;
+  }
+
+  th {
+    text-align: left;
+    padding: 10px 16px;
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    vertical-align: top;
+  }
+
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--text); font-weight: 500; font-family: var(--mono); font-size: 12.5px; }
+
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 16px 0;
+  }
+
+  /* Callout */
+  .callout {
+    display: flex;
+    gap: 14px;
+    padding: 18px 20px;
+    border-radius: 10px;
+    margin: 16px 0;
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+
+  .callout-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .callout p { margin: 0; }
+
+  .callout-warn { background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.2); color: #d4a017; }
+  .callout-warn p { color: #c49515; }
+  .callout-info { background: rgba(108,143,255,.08); border: 1px solid rgba(108,143,255,.2); }
+  .callout-info p { color: var(--text-muted); }
+  .callout-ok { background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.2); }
+  .callout-ok p { color: #2ba87a; }
+
+  /* Pipeline diagram */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 20px 0;
+  }
+
+  .pipe-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .pipe-step:first-child { border-radius: 10px 10px 0 0; }
+  .pipe-step:last-child { border-radius: 0 0 10px 10px; }
+  .pipe-step + .pipe-step { border-top: none; }
+
+  .pipe-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+    background: var(--surface2);
+  }
+
+  .pipe-label { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .pipe-sub { font-size: 12px; color: var(--text-muted); }
+
+  .pipe-arrow {
+    display: flex;
+    justify-content: center;
+    color: var(--text-dim);
+    font-size: 14px;
+    margin: -1px 0;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    padding: 4px 0;
+  }
+
+  /* Endpoints grid */
+  .endpoints { display: flex; flex-direction: column; gap: 12px; }
+
+  .endpoint {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 18px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  .method {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .method-get { background: rgba(52,211,153,.12); color: var(--green); border: 1px solid rgba(52,211,153,.2); }
+  .method-post { background: rgba(108,143,255,.12); color: var(--accent); border: 1px solid rgba(108,143,255,.2); }
+
+  .ep-path { font-family: var(--mono); font-size: 13px; color: var(--text); font-weight: 500; margin-bottom: 4px; }
+  .ep-desc { font-size: 13px; color: var(--text-muted); }
+
+  /* Grid 2 cols */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* DB table diagram */
+  .db-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .db-table-header {
+    background: var(--surface2);
+    padding: 12px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    font-family: var(--mono);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .db-col {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 16px;
+    border-bottom: 1px solid rgba(42,48,80,.5);
+    font-size: 12.5px;
+  }
+
+  .db-col:last-child { border-bottom: none; }
+  .db-col-name { font-family: var(--mono); color: var(--text); flex: 1; }
+  .db-col-type { font-family: var(--mono); color: var(--text-muted); font-size: 11px; }
+  .db-pk { font-size: 9px; background: rgba(251,191,36,.15); color: var(--yellow); padding: 2px 6px; border-radius: 4px; font-weight: 700; }
+  .db-fk { font-size: 9px; background: rgba(108,143,255,.15); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-weight: 700; }
+
+  /* Status list */
+  .check-list { list-style: none; }
+  .check-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(42,48,80,.5);
+    font-size: 13.5px;
+    color: var(--text-muted);
+  }
+
+  .check-list li:last-child { border-bottom: none; }
+  .check-done { color: var(--green); flex-shrink: 0; margin-top: 2px; }
+  .check-todo { color: var(--text-dim); flex-shrink: 0; margin-top: 2px; }
+
+  /* Divider */
+  hr { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  @media (max-width: 900px) {
+    nav { display: none; }
+    main { padding: 32px 24px; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- Sidebar -->
+<nav>
+  <div class="nav-logo">
+    <div class="logo-badge">
+      <div class="logo-icon">🎓</div>
+      Edora AI Tutor
+    </div>
+  </div>
+
+  <div class="nav-section">Démarrage</div>
+  <a href="#overview" class="active"><span class="nav-icon">📋</span> Vue d'ensemble</a>
+  <a href="#stack"><span class="nav-icon">⚙️</span> Stack technique</a>
+  <a href="#installation"><span class="nav-icon">🚀</span> Installation</a>
+
+  <div class="nav-section">Architecture</div>
+  <a href="#pipeline"><span class="nav-icon">🔄</span> Pipeline RAG</a>
+  <a href="#api"><span class="nav-icon">🔌</span> Endpoints API</a>
+  <a href="#database"><span class="nav-icon">🗄️</span> Base de données</a>
+
+  <div class="nav-section">Fonctionnalités</div>
+  <a href="#features"><span class="nav-icon">✨</span> Chat & Tuteur Edo</a>
+  <a href="#actions"><span class="nav-icon">🎯</span> Icônes d'action</a>
+  <a href="#gamification"><span class="nav-icon">🏆</span> Gamification XP</a>
+  <a href="#dashboards"><span class="nav-icon">📊</span> Dashboards</a>
+  <a href="#images"><span class="nav-icon">🖼️</span> Génération d'images</a>
+
+  <div class="nav-section">Administration</div>
+  <a href="#config"><span class="nav-icon">🔧</span> Configuration</a>
+  <a href="#logs"><span class="nav-icon">📝</span> Logs & debug</a>
+  <a href="#troubleshooting"><span class="nav-icon">🩺</span> Troubleshooting</a>
+</nav>
+
+<!-- Main content -->
+<main>
+
+  <!-- Hero -->
+  <div class="hero" id="overview">
+    <div class="hero-tag">Guide Administrateur v1.0</div>
+    <h1>Edora <span>AI Tutor</span></h1>
+    <p class="hero-desc">
+      Plugin Moodle de tutorat intelligent basé sur une architecture RAG — le chatbot répond aux questions des étudiants à partir du contenu indexé du cours, enrichi d'un système de détection de niveau, de gamification XP et de génération d'images pédagogiques.
+    </p>
+    <div class="hero-meta">
+      <div class="meta-item"><div class="meta-dot"></div> Moodle 4.4 (Bitnami)</div>
+      <div class="meta-item"><div class="meta-dot" style="background:var(--accent)"></div> FastAPI + ChromaDB</div>
+      <div class="meta-item"><div class="meta-dot" style="background:var(--accent2)"></div> Gemini 2.5 Flash</div>
+      <div class="meta-item"><div class="meta-dot" style="background:var(--yellow)"></div> Stage Edora LMS — été 2026</div>
+    </div>
+  </div>
+
+  <!-- Stack -->
+  <section id="stack">
+    <h2>Stack technique</h2>
+    <p class="section-desc">Tous les composants qui font tourner Edora AI Tutor.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Composant</th><th>Technologie</th><th>Port / URL</th></tr></thead>
+        <tbody>
+          <tr><td>LMS</td><td>Moodle 4.4 (Bitnami Docker)</td><td>http://localhost:8082</td></tr>
+          <tr><td>Plugin</td><td>PHP — block_tutor_ai</td><td>Bloc Moodle</td></tr>
+          <tr><td>Microservice IA</td><td>FastAPI + Uvicorn</td><td>http://localhost:8000</td></tr>
+          <tr><td>Base vectorielle</td><td>ChromaDB (persistant)</td><td>ai-service/chroma_db/</td></tr>
+          <tr><td>LLM</td><td>gemini-2.5-flash</td><td>API Google</td></tr>
+          <tr><td>Génération image</td><td>gemini-2.5-flash-image</td><td>API Google</td></tr>
+          <tr><td>Embeddings</td><td>gemini-embedding-2 (3072 dim)</td><td>API Google</td></tr>
+          <tr><td>Base de données</td><td>MariaDB</td><td>Conteneur edora-mariadb</td></tr>
+          <tr><td>Transcription vidéo</td><td>Whisper + yt-dlp + ffmpeg</td><td>Inclus dans FastAPI</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Installation -->
+  <section id="installation">
+    <h2>Installation</h2>
+    <p class="section-desc">Mise en place complète de l'environnement depuis zéro.</p>
+
+    <h3>1 — Prérequis</h3>
+    <div class="card">
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;">
+        <li style="display:flex;gap:10px;align-items:center;font-size:13.5px;color:var(--text-muted)"><span style="color:var(--green)">✓</span> Docker Desktop installé et démarré</li>
+        <li style="display:flex;gap:10px;align-items:center;font-size:13.5px;color:var(--text-muted)"><span style="color:var(--green)">✓</span> Python 3.10+ pour le microservice</li>
+        <li style="display:flex;gap:10px;align-items:center;font-size:13.5px;color:var(--text-muted)"><span style="color:var(--green)">✓</span> Clé API Google Gemini valide</li>
+        <li style="display:flex;gap:10px;align-items:center;font-size:13.5px;color:var(--text-muted)"><span style="color:var(--green)">✓</span> Git pour cloner le repo</li>
+      </ul>
+    </div>
+
+    <h3>2 — Cloner le dépôt</h3>
+    <pre><span class="cmd">git clone</span> https://github.com/islemTroudi/edora-ai-tutor
+<span class="cmd">cd</span> edora-ai-tutor</pre>
+
+    <h3>3 — Configurer les variables d'environnement</h3>
+    <p>Créer un fichier <code>.env</code> à la racine du projet :</p>
+    <pre><span class="comment"># Moodle</span>
+<span class="key">MOODLE_WS_TOKEN</span>=<span class="string">votre_token_webservice</span>
+<span class="key">MOODLE_BASE_URL</span>=<span class="string">http://localhost:8082</span>
+
+<span class="comment"># Google Gemini</span>
+<span class="key">GEMINI_API_KEY</span>=<span class="string">votre_cle_api_gemini</span>
+
+<span class="comment"># Timeout LLM (optionnel, défaut 30s)</span>
+<span class="key">GEMINI_TIMEOUT</span>=<span class="string">30</span></pre>
+
+    <div class="callout callout-warn">
+      <div class="callout-icon">⚠️</div>
+      <p>Ne jamais commiter le fichier <code>.env</code> dans Git. Il est listé dans <code>.gitignore</code> — vérifier avant chaque push.</p>
+    </div>
+
+    <h3>4 — Démarrer Moodle via Docker</h3>
+    <pre><span class="comment"># Démarrer les conteneurs (première fois)</span>
+<span class="cmd">docker compose up -d</span>
+
+<span class="comment"># Vérifier que les conteneurs tournent</span>
+<span class="cmd">docker ps</span>
+<span class="comment"># → edora-moodle et edora-mariadb doivent apparaître</span></pre>
+
+    <h3>5 — Installer le plugin Moodle</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <div class="step-title">Copier le plugin dans Moodle</div>
+          <div class="step-desc">Copier le dossier <code>moodle-plugin/blocks/tutor_ai/</code> dans le conteneur Docker sous <code>/bitnami/moodle/blocks/tutor_ai/</code>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <div class="step-title">Déclencher l'installation</div>
+          <div class="step-desc">Se connecter en admin sur <code>http://localhost:8082</code>. Moodle détecte automatiquement le nouveau plugin et affiche la page d'installation. Cliquer sur "Upgrade database".</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <div class="step-title">Générer un token WebService</div>
+          <div class="step-desc">Administration → Plugins → Web services → Gérer les tokens → créer un token pour l'utilisateur admin avec le service <code>edora_ai_service</code>. Mettre à jour le <code>.env</code>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <div class="step-title">Ajouter le bloc à un cours</div>
+          <div class="step-desc">Dans un cours → Activer le mode édition → Ajouter un bloc → sélectionner "AI Tutor". Le chat apparaît dans la colonne latérale.</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>6 — Démarrer le microservice FastAPI</h3>
+    <pre><span class="cmd">cd</span> ai-service
+<span class="cmd">pip install</span> -r requirements.txt
+<span class="cmd">uvicorn</span> main:app --reload --port 8000</pre>
+
+    <p>Vérifier que tout fonctionne :</p>
+    <pre><span class="cmd">curl</span> http://localhost:8000/health
+<span class="comment"># → {"status": "ok", "version": "1.0.0"}</span></pre>
+  </section>
+
+  <hr>
+
+  <!-- Pipeline -->
+  <section id="pipeline">
+    <h2>Pipeline RAG</h2>
+    <p class="section-desc">Le flux complet d'indexation et de réponse — de l'upload du prof à la réponse de l'étudiant.</p>
+
+    <h3>Indexation (upload prof → ChromaDB)</h3>
+    <div class="pipeline">
+      <div class="pipe-step">
+        <div class="pipe-icon">👨‍🏫</div>
+        <div>
+          <div class="pipe-label">Prof uploade un fichier dans Moodle</div>
+          <div class="pipe-sub">Formats supportés : PDF, DOCX, PPTX, TXT, pages Moodle</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">🔔</div>
+        <div>
+          <div class="pipe-label">Observer PHP détecte l'événement</div>
+          <div class="pipe-sub">events.php + observer.php → appel HTTP vers /upload-resource</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">📥</div>
+        <div>
+          <div class="pipe-label">FastAPI télécharge le fichier via l'API Moodle</div>
+          <div class="pipe-sub">Utilise MOODLE_WS_TOKEN pour authentification</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">📄</div>
+        <div>
+          <div class="pipe-label">document_extractor.py — extraction texte</div>
+          <div class="pipe-sub">Selon le type : pdfplumber / python-docx / python-pptx / texte brut</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">✂️</div>
+        <div>
+          <div class="pipe-label">chunker.py — découpage LangChain</div>
+          <div class="pipe-sub">RecursiveCharacterTextSplitter — chunks sémantiquement cohérents</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">🔢</div>
+        <div>
+          <div class="pipe-label">embeddings.py — vecteurs Gemini</div>
+          <div class="pipe-sub">gemini-embedding-2 → vecteurs 3072 dimensions par chunk</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">🗃️</div>
+        <div>
+          <div class="pipe-label">chroma_service.py — stockage ChromaDB</div>
+          <div class="pipe-sub">Collection nommée course_{course_id} — persistant dans chroma_db/</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Interrogation (question étudiant → réponse)</h3>
+    <div class="pipeline">
+      <div class="pipe-step">
+        <div class="pipe-icon">💬</div>
+        <div>
+          <div class="pipe-label">Étudiant pose une question dans le chat</div>
+          <div class="pipe-sub">Paramètres envoyés : question + course_id + student_id + conversation_id</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">🔍</div>
+        <div>
+          <div class="pipe-label">Recherche vectorielle dans ChromaDB</div>
+          <div class="pipe-sub">Filtré par course_id → top-k chunks les plus pertinents</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">🧠</div>
+        <div>
+          <div class="pipe-label">Construction du prompt RAG</div>
+          <div class="pipe-sub">gemini.py : build_context() + build_history() + build_prompt()</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">✨</div>
+        <div>
+          <div class="pipe-label">Appel API Gemini 2.5 Flash</div>
+          <div class="pipe-sub">temperature=0.3 · max_output_tokens=1024 · timeout=30s · HISTORY_WINDOW=6</div>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">🤖</div>
+        <div>
+          <div class="pipe-label">Réponse du tuteur Edo</div>
+          <div class="pipe-sub">Adaptée au niveau de l'étudiant (Débutant / Intermédiaire / Avancé)</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- API -->
+  <section id="api">
+    <h2>Endpoints API</h2>
+    <p class="section-desc">Contrat REST du microservice FastAPI — port 8000.</p>
+
+    <div class="endpoints">
+      <div class="endpoint">
+        <div class="method method-get">GET</div>
+        <div>
+          <div class="ep-path">/health</div>
+          <div class="ep-desc">Vérification de santé du service. Retourne <code>{"status": "ok", "version": "1.0.0"}</code>.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-post">POST</div>
+        <div>
+          <div class="ep-path">/ask</div>
+          <div class="ep-desc">Pipeline RAG complet. Reçoit <code>question</code>, <code>course_id</code>, <code>student_id</code>, <code>conversation_id</code>, <code>conversation_history</code>. Retourne la réponse d'Edo + <code>chunks_used</code> + <code>found_in_course</code>.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-post">POST</div>
+        <div>
+          <div class="ep-path">/upload-resource</div>
+          <div class="ep-desc">Déclenché par l'observer PHP. Reçoit <code>course_id</code>, <code>resource_id</code>, <code>resource_type</code>, <code>file_url</code>. Lance le pipeline d'indexation complet.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-post">POST</div>
+        <div>
+          <div class="ep-path">/quiz</div>
+          <div class="ep-desc">Génère minimum 3 QCM avec 4 propositions chacun. Retourne JSON structuré : <code>{"questions": [{"question", "options", "answer", "explanation"}]}</code>.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-post">POST</div>
+        <div>
+          <div class="ep-path">/summary</div>
+          <div class="ep-desc">Génère un résumé structuré avec titres, points clés, et reformulation pédagogique claire basé sur les chunks du cours.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-post">POST</div>
+        <div>
+          <div class="ep-path">/examples</div>
+          <div class="ep-desc">Génère 2-3 exemples concrets avec contexte réel à partir du contenu du cours. Prompt dédié, optimisé pour la pédagogie.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-post">POST</div>
+        <div>
+          <div class="ep-path">/generate-image</div>
+          <div class="ep-desc">Génère un diagramme éducatif via gemini-2.5-flash-image. Si <code>concept</code> est vide → mode galerie (top 3 concepts extraits de ChromaDB, 3 images max). Si concept précis → image ciblée.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-post">POST</div>
+        <div>
+          <div class="ep-path">/reformulate</div>
+          <div class="ep-desc">Reformule une explication selon un niveau de langage (slider "Explain Like I'm"). Niveaux : 5 ans, collégien, lycéen, étudiant, expert.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-get">GET</div>
+        <div>
+          <div class="ep-path">/xp</div>
+          <div class="ep-desc">Récupère les points XP et le rang de l'étudiant.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-post">POST</div>
+        <div>
+          <div class="ep-path">/xp/add</div>
+          <div class="ep-desc">Ajoute des points XP à l'étudiant suite à une interaction pédagogique.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-get">GET</div>
+        <div>
+          <div class="ep-path">/unanswered</div>
+          <div class="ep-desc">Retourne les questions auxquelles Edo n'a pas pu répondre (non trouvées dans le cours) — utilisé dans le dashboard prof.</div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="method method-post">POST</div>
+        <div>
+          <div class="ep-path">/export</div>
+          <div class="ep-desc">Génère un PDF exportable de la session de chat via reportlab + Gemini. Téléchargeable depuis le chat.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Database -->
+  <section id="database">
+    <h2>Base de données</h2>
+    <p class="section-desc">Tables MariaDB créées par le plugin (préfixe <code>mdl_edora_</code>).</p>
+
+    <div class="grid2">
+      <div class="db-table">
+        <div class="db-table-header">🗂️ mdl_edora_conversations</div>
+        <div class="db-col"><span class="db-pk">PK</span> <span class="db-col-name">id</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-fk">FK</span> <span class="db-col-name">course_id</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-fk">FK</span> <span class="db-col-name">student_id</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-col-name">conversation_id</span> <span class="db-col-type">VARCHAR</span></div>
+        <div class="db-col"><span class="db-col-name">student_level</span> <span class="db-col-type">VARCHAR</span></div>
+        <div class="db-col"><span class="db-col-name">created_at</span> <span class="db-col-type">TIMESTAMP</span></div>
+      </div>
+
+      <div class="db-table">
+        <div class="db-table-header">💬 mdl_edora_messages</div>
+        <div class="db-col"><span class="db-pk">PK</span> <span class="db-col-name">id</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-fk">FK</span> <span class="db-col-name">conversation_id</span> <span class="db-col-type">VARCHAR</span></div>
+        <div class="db-col"><span class="db-col-name">role</span> <span class="db-col-type">ENUM(user,assistant)</span></div>
+        <div class="db-col"><span class="db-col-name">content</span> <span class="db-col-type">TEXT</span></div>
+        <div class="db-col"><span class="db-col-name">created_at</span> <span class="db-col-type">TIMESTAMP</span></div>
+      </div>
+
+      <div class="db-table">
+        <div class="db-table-header">🏆 mdl_edora_xp</div>
+        <div class="db-col"><span class="db-pk">PK</span> <span class="db-col-name">id</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-fk">FK</span> <span class="db-col-name">student_id</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-fk">FK</span> <span class="db-col-name">course_id</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-col-name">points</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-col-name">rank</span> <span class="db-col-type">VARCHAR</span></div>
+        <div class="db-col"><span class="db-col-name">updated_at</span> <span class="db-col-type">TIMESTAMP</span></div>
+      </div>
+
+      <div class="db-table">
+        <div class="db-table-header">❓ mdl_edora_unanswered</div>
+        <div class="db-col"><span class="db-pk">PK</span> <span class="db-col-name">id</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-fk">FK</span> <span class="db-col-name">course_id</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-fk">FK</span> <span class="db-col-name">student_id</span> <span class="db-col-type">INT</span></div>
+        <div class="db-col"><span class="db-col-name">question</span> <span class="db-col-type">TEXT</span></div>
+        <div class="db-col"><span class="db-col-name">created_at</span> <span class="db-col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <div class="callout callout-info" style="margin-top:20px;">
+      <div class="callout-icon">💡</div>
+      <p>Le préfixe <code>mdl_</code> est obligatoire pour toutes les tables créées par un plugin Moodle. Dans les requêtes SQL, toujours utiliser <code>{table_name}</code> (la notation Moodle avec accolades) pour que le préfixe soit injecté automatiquement — ne jamais hardcoder <code>mdl_</code> directement dans le code PHP.</p>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- Features -->
+  <section id="features">
+    <h2>Chat & Tuteur Edo</h2>
+    <p class="section-desc">Le chatbot IA personnalisé au cœur du plugin.</p>
+
+    <div class="card">
+      <div class="card-title">🤖 Persona Edo — 7 règles</div>
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+        <li style="font-size:13.5px;color:var(--text-muted)">① Répond uniquement dans la langue de l'étudiant (FR/AR/EN auto-détecté)</li>
+        <li style="font-size:13.5px;color:var(--text-muted)">② Se base exclusivement sur le contenu du cours indexé</li>
+        <li style="font-size:13.5px;color:var(--text-muted)">③ Adapte son niveau d'explication au niveau détecté de l'étudiant</li>
+        <li style="font-size:13.5px;color:var(--text-muted)">④ Ton chaleureux, encourageant, pédagogique — jamais condescendant</li>
+        <li style="font-size:13.5px;color:var(--text-muted)">⑤ Répond "je ne sais pas" (proprement) si l'info n'est pas dans le cours</li>
+        <li style="font-size:13.5px;color:var(--text-muted)">⑥ Historique des 6 derniers messages conservé (HISTORY_WINDOW = 6)</li>
+        <li style="font-size:13.5px;color:var(--text-muted)">⑦ Réponses concises et directes — max 1024 tokens</li>
+      </ul>
+    </div>
+
+    <h3>Détection de niveau étudiant</h3>
+    <p>À la première vraie question pédagogique (pas un simple "bonjour"), Edo déclenche un mini-quiz de 10 questions. Le score détermine le niveau :</p>
+    <div style="display:flex;gap:12px;margin:16px 0;flex-wrap:wrap;">
+      <div style="flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:24px;margin-bottom:8px;">🌱</div>
+        <div style="font-size:13px;font-weight:600;color:var(--green)">Débutant</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">0–4 / 10</div>
+      </div>
+      <div style="flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:24px;margin-bottom:8px;">📘</div>
+        <div style="font-size:13px;font-weight:600;color:var(--accent)">Intermédiaire</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">5–7 / 10</div>
+      </div>
+      <div style="flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:24px;margin-bottom:8px;">🚀</div>
+        <div style="font-size:13px;font-weight:600;color:var(--accent2)">Avancé</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">8–10 / 10</div>
+      </div>
+    </div>
+    <p>Le niveau est stocké dans <code>mdl_edora_conversations.student_level</code> et utilisé dans chaque appel Gemini pour adapter le prompt.</p>
+  </section>
+
+  <!-- Actions -->
+  <section id="actions">
+    <h2>Icônes d'action</h2>
+    <p class="section-desc">4 boutons fonctionnels dans l'interface chat — chacun a un prompt dédié côté FastAPI.</p>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-title">📝 Quiz</div>
+      <p>Génère minimum 3 QCM avec 4 propositions chacun via <code>/quiz</code>. Format JSON structuré avec question, options A/B/C/D, bonne réponse et explication. L'étudiant voit un interface interactif dans le chat.</p>
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-title">📋 Résumé</div>
+      <p>Prompt dédié sur <code>/summary</code> → résumé structuré avec titres, points clés, et reformulation pédagogique claire du cours ou du sujet posé.</p>
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-title">💡 Exemples</div>
+      <p>Prompt dédié sur <code>/examples</code> → 2-3 exemples concrets avec contexte réel. Ancre les concepts abstraits du cours dans des situations concrètes.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔍 Expliquer</div>
+      <p>Déclenche la détection de niveau avant d'expliquer. Reformule ensuite l'explication selon le niveau détecté. Inclut le slider "Explain Like I'm" (5 niveaux via <code>/reformulate</code>).</p>
+    </div>
+  </section>
+
+  <!-- Gamification -->
+  <section id="gamification">
+    <h2>Gamification XP</h2>
+    <p class="section-desc">Système de points d'expérience pour motiver l'engagement des étudiants.</p>
+
+    <h3>Widget XP</h3>
+    <p>Le widget s'affiche dans le chat (avant le div <code>edo-messages</code>). Il comprend :</p>
+    <ul class="check-list">
+      <li><span class="check-done">✓</span> Affichage du total XP et du rang de l'étudiant</li>
+      <li><span class="check-done">✓</span> Badge rouge sur la cloche 🔔 avec compteur de badges</li>
+      <li><span class="check-done">✓</span> Panneau notifications ouvert/fermé au clic</li>
+      <li><span class="check-done">✓</span> Fermeture au clic extérieur</li>
+      <li><span class="check-done">✓</span> "Tout voir" / "Réduire" pour les badges supplémentaires</li>
+    </ul>
+
+    <h3>Attribution XP</h3>
+    <p>Les points sont attribués automatiquement via <code>POST /xp/add</code> à chaque interaction pédagogique dans le chat. Les données sont stockées dans <code>mdl_edora_xp</code>.</p>
+  </section>
+
+  <!-- Dashboards -->
+  <section id="dashboards">
+    <h2>Dashboards</h2>
+    <p class="section-desc">Tableaux de bord analytiques pour enseignants et administrateurs.</p>
+
+    <h3>Dashboard enseignant</h3>
+    <div class="card">
+      <ul class="check-list">
+        <li><span class="check-done">✓</span> Questions non répondues par Edo (lacunes de contenu)</li>
+        <li><span class="check-done">✓</span> Engagement des étudiants par cours</li>
+        <li><span class="check-done">✓</span> Filtres période (semaine / mois / tout)</li>
+        <li><span class="check-done">✓</span> Détection rôle enseignant corrigée</li>
+      </ul>
+    </div>
+
+    <h3>Dashboard admin</h3>
+    <div class="card">
+      <ul class="check-list">
+        <li><span class="check-done">✓</span> Vue globale multi-cours</li>
+        <li><span class="check-done">✓</span> Top cours par activité IA</li>
+        <li><span class="check-done">✓</span> Distribution des tâches (quiz / résumé / exemples / chat)</li>
+        <li><span class="check-done">✓</span> Progression des niveaux étudiants</li>
+        <li><span class="check-done">✓</span> Filtres période avec alias SQL corrects (<code>$period_filter</code> / <code>$period_filter_no_alias</code>)</li>
+        <li><span class="check-done">✓</span> Mode sombre (bouton soleil/lune SVG)</li>
+      </ul>
+    </div>
+
+    <div class="callout callout-warn">
+      <div class="callout-icon">⚠️</div>
+      <p>Attention aux alias SQL dans les requêtes du dashboard. Les requêtes avec alias <code>ec</code> utilisent <code>$period_filter</code> (filtre avec alias), les requêtes sans alias utilisent <code>$period_filter_no_alias</code>. Mélanger les deux cause une erreur <em>Unknown column ec.created_at</em>.</p>
+    </div>
+  </section>
+
+  <!-- Images -->
+  <section id="images">
+    <h2>Génération d'images</h2>
+    <p class="section-desc">Diagrammes éducatifs générés par gemini-2.5-flash-image.</p>
+
+    <h3>Deux modes de génération</h3>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-title">🎯 Concept précis</div>
+      <p>L'étudiant précise un concept (ex. "génère une image sur les pointeurs en C"). Edo demande confirmation du concept, puis génère une image ciblée et claire. Résultat optimal.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🗺️ Aperçu du cours complet</div>
+      <p>Si aucun concept n'est précisé, le flow multi-images se déclenche :</p>
+      <div class="steps" style="margin-top:16px;">
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-body">
+            <div class="step-title">Requête ChromaDB générique</div>
+            <div class="step-desc">Top 3 chunks les plus représentatifs du cours récupérés via une requête "concepts principaux du cours".</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-body">
+            <div class="step-title">Extraction des concepts clés</div>
+            <div class="step-desc">Gemini extrait 3 concepts clés depuis ces chunks.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-body">
+            <div class="step-title">Génération galerie (3 images max)</div>
+            <div class="step-desc">Une image par concept. Limité à 3 pour contrôler les coûts API. Un loader est affiché pendant la génération (~3× plus long).</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-warn">
+      <div class="callout-icon">⚠️</div>
+      <p>Pour un cours dense avec beaucoup de concepts, l'image "aperçu complet" peut être illisible. Recommander aux étudiants de préciser un concept pour des résultats optimaux. Le prompt est limité aux top 3 chunks pour éviter la surcharge contextuelle.</p>
+    </div>
+
+    <h3>Prompt technique</h3>
+    <pre><span class="key">specific_concept</span> = (
+    f<span class="string">"\n=== SPECIFIC CONCEPT REQUESTED ===\n{request.concept}\n"</span>
+    <span class="string">"Focus the image EXCLUSIVELY on this concept.\n"</span>
+    <span class="comment">if request.concept else</span>
+    <span class="string">"\n=== COURSE OVERVIEW REQUESTED ===\n"</span>
+    <span class="string">"Generate a SINGLE comprehensive diagram that visually\n"</span>
+    <span class="string">"represents ALL the main concepts of this course and\n"</span>
+    <span class="string">"their relationships. The diagram must be a global overview\n"</span>
+    <span class="string">"— like a visual syllabus — showing how key topics connect.\n"</span>
+)</pre>
+  </section>
+
+  <hr>
+
+  <!-- Config -->
+  <section id="config">
+    <h2>Configuration</h2>
+    <p class="section-desc">Paramètres ajustables sans toucher au code.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable .env</th><th>Défaut</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>GEMINI_API_KEY</td><td>—</td><td>Clé API Google Gemini (obligatoire)</td></tr>
+          <tr><td>MOODLE_WS_TOKEN</td><td>—</td><td>Token WebService Moodle (obligatoire)</td></tr>
+          <tr><td>MOODLE_BASE_URL</td><td>http://localhost:8082</td><td>URL de l'instance Moodle</td></tr>
+          <tr><td>GEMINI_TIMEOUT</td><td>30</td><td>Timeout en secondes pour les appels Gemini</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Paramètres dans le code</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Constante</th><th>Fichier</th><th>Valeur</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>HISTORY_WINDOW</td><td>gemini.py</td><td>6</td><td>Nb de messages d'historique passés à Gemini</td></tr>
+          <tr><td>temperature</td><td>gemini.py</td><td>0.3</td><td>Créativité du LLM (plus bas = plus factuel)</td></tr>
+          <tr><td>max_output_tokens</td><td>gemini.py</td><td>1024</td><td>Longueur max des réponses</td></tr>
+          <tr><td>Images galerie max</td><td>chat.py</td><td>3</td><td>Nb max d'images en mode aperçu cours</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Logs -->
+  <section id="logs">
+    <h2>Logs & debug</h2>
+    <p class="section-desc">Points de logging structurés dans le microservice.</p>
+
+    <h3>Points de log FastAPI</h3>
+    <p>3 niveaux définis dans <code>gemini.py</code> :</p>
+    <pre><span class="comment"># INFO — début d'appel</span>
+logging.info(<span class="string">f"[ask_gemini] course={course_id} student={student_id} chunks={len(chunks)}"</span>)
+
+<span class="comment"># INFO — réponse reçue</span>
+logging.info(<span class="string">f"[ask_gemini] found_in_course={found_in_course} tokens_used=..."</span>)
+
+<span class="comment"># ERROR — timeout ou erreur API</span>
+logging.error(<span class="string">f"[ask_gemini] Timeout après {GEMINI_TIMEOUT}s"</span>)</pre>
+
+    <h3>Consulter les logs</h3>
+    <pre><span class="comment"># Logs du microservice FastAPI (terminal Uvicorn)</span>
+<span class="cmd">uvicorn</span> main:app --reload --log-level debug
+
+<span class="comment"># Logs du conteneur Moodle</span>
+<span class="cmd">docker logs</span> edora-moodle --tail 50 -f
+
+<span class="comment"># Logs MariaDB</span>
+<span class="cmd">docker logs</span> edora-mariadb --tail 20</pre>
+
+    <h3>Vérifier ChromaDB</h3>
+    <pre><span class="comment"># Lister les collections</span>
+<span class="cmd">python3</span> -c <span class="string">"
+import chromadb
+client = chromadb.PersistentClient(path='chroma_db')
+print(client.list_collections())
+"</span>
+
+<span class="comment"># Compter les chunks d'un cours</span>
+<span class="cmd">python3</span> -c <span class="string">"
+import chromadb
+client = chromadb.PersistentClient(path='chroma_db')
+col = client.get_collection('course_1')
+print(col.count())
+"</span></pre>
+  </section>
+
+  <!-- Troubleshooting -->
+  <section id="troubleshooting">
+    <h2>Troubleshooting</h2>
+    <p class="section-desc">Problèmes connus et leurs solutions.</p>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title"><span class="badge badge-red">Erreur</span> Unknown column ec.created_at</div>
+      <p style="margin-top:10px;"><strong>Cause :</strong> Requête SQL avec alias <code>ec</code> utilisant <code>$period_filter_no_alias</code> (ou vice-versa).<br>
+      <strong>Fix :</strong> Utiliser <code>$period_filter</code> (avec alias <code>ec.</code>) pour les requêtes avec alias, <code>$period_filter_no_alias</code> pour les requêtes sans alias.</p>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title"><span class="badge badge-red">Bug</span> Boucle de redirection admin dashboard</div>
+      <p style="margin-top:10px;"><strong>Cause :</strong> <code>$PAGE->set_url()</code> pointait vers <code>dashboard.php</code> au lieu de <code>admin_dashboard.php</code>.<br>
+      <strong>Fix :</strong> Corriger l'URL dans <code>set_url()</code> pour pointer vers le bon fichier.</p>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title"><span class="badge badge-yellow">Attention</span> Confusion entre cours dans les réponses RAG</div>
+      <p style="margin-top:10px;"><strong>Cause :</strong> Recherche ChromaDB sans filtre <code>course_id</code>.<br>
+      <strong>Fix :</strong> Toujours passer <code>where={"course_id": course_id}</code> dans la requête ChromaDB.</p>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title"><span class="badge badge-yellow">Attention</span> Timeout Gemini sur les requêtes longues</div>
+      <p style="margin-top:10px;"><strong>Cause :</strong> Génération lente sur de grands contextes ou pics de charge.<br>
+      <strong>Fix :</strong> Augmenter <code>GEMINI_TIMEOUT</code> dans <code>.env</code> (ex: 60s pour la génération d'images).</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="badge badge-yellow">Attention</span> Plugin non détecté par Moodle après copie</div>
+      <p style="margin-top:10px;"><strong>Cause :</strong> Cache Moodle non vidé.<br>
+      <strong>Fix :</strong> Administration → Développement → Vider tous les caches, puis recharger la page admin.</p>
+    </div>
+
+    <h3>Checklist démarrage rapide</h3>
+    <ul class="check-list">
+      <li><span class="check-done">✓</span> <code>docker ps</code> → edora-moodle et edora-mariadb actifs</li>
+      <li><span class="check-done">✓</span> <code>curl http://localhost:8000/health</code> → <code>{"status": "ok"}</code></li>
+      <li><span class="check-done">✓</span> <code>.env</code> renseigné avec GEMINI_API_KEY et MOODLE_WS_TOKEN</li>
+      <li><span class="check-done">✓</span> Plugin visible dans Administration → Plugins → Blocs</li>
+      <li><span class="check-done">✓</span> Bloc ajouté au cours étudiant test</li>
+      <li><span class="check-done">✓</span> Upload d'un PDF → vérifier ChromaDB avec <code>col.count() > 0</code></li>
+      <li><span class="check-done">✓</span> Question test dans le chat → réponse cohérente reçue</li>
+    </ul>
+  </section>
+
+  <div style="height:64px;"></div>
+
+</main>
+</div>
+</body>
+</html>

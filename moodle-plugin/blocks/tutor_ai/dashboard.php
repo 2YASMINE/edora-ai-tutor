@@ -208,16 +208,16 @@ if ($has_conversations) {
         u.lastname,
         COUNT(*) AS nb_conversations,
         MAX(ec.created_at) AS derniere_activite,
-        ec.student_level
+        MIN(ec.student_level) AS student_level
     FROM {edora_conversations} ec
     JOIN {user} u ON u.id = ec.user_id
     WHERE ec.course_id = :course_id $period_filter
           AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-        GROUP BY ec.user_id, ec.student_level, u.firstname, u.lastname
-        HAVING COUNT(*) >= 3 AND (ec.student_level = 'debutant' OR ec.student_level IS NULL)
-        ORDER BY nb_conversations DESC
-        LIMIT 10
-    ", ['course_id' => $selected_course]);
+    GROUP BY ec.user_id, u.firstname, u.lastname
+    HAVING COUNT(*) >= 3 AND (MIN(ec.student_level) = 'debutant' OR MIN(ec.student_level) IS NULL)
+    ORDER BY nb_conversations DESC
+    LIMIT 10
+", ['course_id' => $selected_course]);
 
     // 5. Distribution des niveaux actuels
     $niveaux_distribution = $DB->get_records_sql("

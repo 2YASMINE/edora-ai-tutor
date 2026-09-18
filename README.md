@@ -1,105 +1,110 @@
-<div align="center">
+# 🎓 Edora AI Tutor — Moodle Block Plugin
 
-# 🎓 Edora AI Tutor
+> Projet de stage d'été 2026 — Edora LMS (Québec)  
+> Binôme : **Yasmine** + **Islem Troudi**
 
-### *Un tuteur qui connaît ses limites — et les respecte.*
-
-**Un assistant IA pédagogique qui ne répond qu'avec ce que le cours contient.**  
-Jamais plus. Jamais moins. Jamais inventé.
-
-![Status](https://img.shields.io/badge/status-en%20d%C3%A9veloppement-orange)
-![Python](https://img.shields.io/badge/Python-FastAPI-3776AB?logo=python&logoColor=white)
-![PHP](https://img.shields.io/badge/PHP-Moodle%20Plugin-777BB4?logo=php&logoColor=white)
-![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-6C4FF6)
-![Gemini](https://img.shields.io/badge/LLM-Gemini%20Flash-4285F4?logo=googlegemini&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker&logoColor=white)
-
-</div>
+Plugin Moodle de tutorat intelligent basé sur une architecture RAG (*Retrieval-Augmented Generation*). Le chatbot **Edo** répond aux questions des étudiants à partir du contenu indexé de leur cours, avec détection de niveau, gamification XP et génération d'images pédagogiques.
 
 ---
 
-## 💡 L'idée en une phrase
+## Stack technique
 
-> Les étudiants apprennent souvent seuls, le soir, coincés sur un concept — et l'enseignant n'est pas toujours là pour répondre. **Edora AI Tutor** comble ce vide, mais avec une règle stricte : il ne parle **que** de ce que le cours enseigne.
-
-Pas de réponse Google déguisée. Pas d'improvisation. Si l'info n'est pas dans le cours, il le dit — clairement, honnêtement.
-
----
-
-## 🧠 Comment ça pense
-
-1. 👩‍🎓 **L'étudiant pose une question** dans le chat du cours
-2. 📘 Le contexte du **cours Moodle** est identifié
-3. 🔌 Le **Plugin PHP** capture la question (interface + auth + identification du cours) et l'envoie via REST API
-4. 🐍 Le **Microservice Python (FastAPI)** prend le relais
-5. ✂️ **Chunking** → 🧬 **Embeddings** → 🔍 **Recherche vectorielle**
-6. 🗂️ Les chunks pertinents sont retrouvés dans **ChromaDB** (la mémoire du cours)
-7. ✨ **Gemini Flash** génère une réponse, strictement à partir du contexte retrouvé
-8. 💬 La réponse est renvoyée au plugin puis **affichée à l'étudiant**
-
-> **La règle d'or du système :** aucune génération de réponse sans passage préalable par la recherche dans le cours. Le LLM n'a jamais le champ libre.
-
----
-
-## 📁 Anatomie du repo
-
-| Dossier | Rôle |
+| Couche | Technologie |
 |---|---|
-| 🔌 `moodle-plugin/` | Interface, auth, pont vers Moodle (PHP) |
-| 🐍 `ai-service/` | Cerveau RAG : chunking, embeddings, LLM (Python) |
-| 📚 `docs/` | Décisions techniques, architecture, specs |
-| 🐳 `docker-compose.yml` | Un `docker compose up` et tout tourne |
+| LMS | Moodle 4.4 (Bitnami Docker) |
+| Plugin | PHP — `block_tutor_ai` |
+| Microservice IA | FastAPI + Uvicorn (port 8000) |
+| Base vectorielle | ChromaDB (persistant) |
+| LLM | Gemini 2.5 Flash (Google API) |
+| Génération image | Gemini 2.5 Flash Image |
+| Embeddings | gemini-embedding-2 (3072 dim) |
+| Base de données | MariaDB |
+| Transcription vidéo | Whisper + yt-dlp + ffmpeg |
 
-## 🛠️ Sous le capot
+---
 
-| Brique | Techno | Rôle |
+## Lancer le projet
+
+### 1 — Variables d'environnement
+
+Créer un fichier `.env` à la racine :
+
+```env
+MOODLE_WS_TOKEN=votre_token_webservice
+MOODLE_BASE_URL=http://localhost:8082
+GEMINI_API_KEY=votre_cle_api_gemini
+GEMINI_TIMEOUT=30
+```
+
+### 2 — Démarrer Moodle
+
+```bash
+docker compose up -d
+```
+
+### 3 — Démarrer le microservice IA
+
+```bash
+cd ai-service
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+
+### 4 — Vérifier
+
+```bash
+curl http://localhost:8000/health
+# → {"status": "ok", "version": "1.0.0"}
+```
+
+---
+
+## Ce qui est réalisé
+
+| Phase | Description | Statut |
 |---|---|---|
-| 🖥️ Interface | PHP · Moodle Plugin API · JS | Chat intégré nativement dans le cours |
-| 🧩 Microservice IA | Python · FastAPI | Orchestration du pipeline RAG |
-| 🗂️ Mémoire vectorielle | ChromaDB | Stockage & recherche sémantique des chunks |
-| 🧾 Historique | MySQL | Conversations persistantes par étudiant |
-| 🤖 Génération | Gemini Flash | Réponses ancrées dans le contexte retrouvé |
-| 📦 Environnement | Docker · Docker Compose | Setup reproductible en une commande |
+| 0 | Docker + Moodle installé | ✅ |
+| 1 | Squelette plugin Moodle | ✅ |
+| 2 | Squelette FastAPI + Hello World | ✅ |
+| 3 | Extraction PDF/DOCX/PPTX/TXT + pages Moodle | ✅ |
+| 4 | Chunking LangChain + Embeddings Gemini + ChromaDB | ✅ |
+| 5 | Prompt RAG + Persona Edo + Appel Gemini + Logging | ✅ |
+| 6 | Interface chat UI + styles | ✅ |
+| 7 | Historique conversation (MySQL + affichage) | ✅ |
+| 8 | Prompt engineering avancé, détection niveau étudiant, quiz / résumé / exemples, gamification XP, dashboards prof & admin, génération d'images, export PDF session | ✅ |
 
 ---
 
-## ✨ Ce que le tuteur saura faire
+## Structure du repo
 
-- [ ] 💬 Répondre aux questions sur le contenu exact du cours
-- [ ] 🔄 Reformuler un concept difficile de plusieurs façons
-- [ ] 📝 Générer des questions de révision sur mesure
-- [ ] 🎯 Donner des exemples concrets, ancrés dans le cours
-- [ ] 🧵 Garder le fil d'une conversation dans le temps
-- [ ] 🚫 Dire "je ne trouve pas ça dans le cours" plutôt que d'inventer
-
----
-
-## 👩‍💻 L'équipe derrière le projet
-
-<div align="center">
-
-| 👤 | Rôle | Terrain de jeu |
-|---|---|---|
-| **Islem Troudi** | 🏗️ Lead Plugin & Infra | Moodle, PHP, Docker, API REST, déploiement , prompting |
-| **Yasmine Briki** | 🧠 Lead AI & RAG Pipeline | Extraction, chunking, embeddings, ChromaDB, UI interface |
-
-*Stage — Edora LMS · 2026*
-
-</div>
+```
+edora-ai-tutor/
+├── moodle-plugin/blocks/tutor_ai/   # Plugin PHP Moodle
+├── ai-service/                      # Microservice FastAPI
+│   ├── routers/                     # Endpoints (chat, quiz, image...)
+│   ├── services/                    # RAG pipeline (extract, chunk, embed, chroma)
+│   └── chroma_db/                   # Base vectorielle persistante
+└── docs/                            # Documentation
+    └── admin-guide.html             # Guide administrateur complet
+```
 
 ---
 
-## 🚦 Où on en est
+## Équipe
 
-🟩 **Phase 0 — Setup de l'environnement** *(terminée)*
-   ** Phase 1 - Moodle fonctionnel** *(en cours)*
-
-Le détail des phases, des décisions techniques et de l'avancement est dans [`docs/`](./docs).
+| Membre | Rôles principaux |
+|---|---|
+| **Yasmine** | Chunking, Embeddings, Prompt engineering, Appel Gemini, Endpoints quiz/résumé/exemples, Observer PHP, UI chat |
+| **Islem Troudi** | Extraction documents, ChromaDB, Gestion erreurs/logs, Détection niveau étudiant, Dashboards |
 
 ---
 
-<div align="center">
+## Documentation
 
-*Construit avec 🩵 par deux stagiaires qui refusent qu'une IA invente la réponse.*
+👉 Voir [`docs/admin-guide.html`](docs/admin-guide.html) pour le guide administrateur complet :
+architecture détaillée, endpoints API, schéma base de données, troubleshooting.
 
-</div>
+---
+
+> Repo de travail : [islemTroudi/edora-ai-tutor](https://github.com/islemTroudi/edora-ai-tutor)  
+> Repo officiel Edora : [edoralms/edoralms-moodle-block_ai_tutor_03](https://github.com/edoralms/edoralms-moodle-block_ai_tutor_03)
