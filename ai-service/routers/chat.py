@@ -1161,63 +1161,65 @@ async def generate_image(request: GenerateImageRequest):
     if request.concept else
     "\n=== COURSE OVERVIEW REQUESTED ===\nNo specific concept was requested. Generate a SINGLE comprehensive diagram that visually represents ALL the main concepts of this course and their relationships. The diagram must be a global overview — like a visual syllabus — showing how the key topics connect to each other.\n"
 )
-        meta_prompt = f"""You are a world-class educational illustrator and technical diagram specialist working with Gemini Image Generation.
+        meta_prompt = f"""You are an expert educational graphic designer creating VISUAL INFOGRAPHIC POSTERS for e-learning platforms.
 
-Your mission: analyze the course content below, identify the EXACT subject, and generate an extremely detailed and specific image prompt that will produce a high-quality educational diagram.
+Your mission: analyze the course content below and generate a detailed image prompt that produces a STUNNING, COLORFUL, VISUALLY RICH educational poster — NOT a technical wireframe diagram.
 
 === COURSE CONTENT ===
 {course_content[:2500]}
 {specific_concept}
 
+=== GOLDEN RULES FOR THE IMAGE PROMPT ===
+1. ALWAYS start with: "Vibrant educational infographic poster about [EXACT TOPIC]."
+2. The poster MUST have a large bold TITLE at the top inside a colored gradient banner (e.g., deep teal, royal blue, rich purple).
+3. Divide the poster into 3 or 4 large COLORED SECTIONS — each section is a rounded card with a SOLID COLOR FILL (not white). Use: deep teal, coral orange, golden yellow, rich purple, forest green, royal blue. Each section must have:
+   - A large relevant ICON or EMOJI-style pictogram at the top (brain, gears, magnifying glass, network, lightbulb, arrow cycle, DNA helix, chart, server, etc.)
+   - A bold white or dark section TITLE
+   - 2-3 short bullet points of key information
+4. Use VISUAL METAPHORS that match the topic: flowing arrows showing processes, node networks, layered architecture, circular cycles, comparison charts, step-by-step numbered flows.
+5. Bottom strip: a dark background ribbon with 4-5 key concept KEYWORDS shown as colored pill/badge tags.
+6. Style: VIBRANT, BOLD, HIGH-CONTRAST. Think: Canva educational template, Visme infographic, professional e-learning poster. Bright saturated colors, gradient fills, rounded corners, subtle shadows on cards.
+7. Typography: large bold title (48pt+), section headers (24pt), readable body text. All text labels in the language of the course content.
+8. ABSOLUTELY FORBIDDEN: plain white boxes, wireframe diagrams, UML-style boxes with compartments, minimal flat line art, gray backgrounds, boring technical charts.
+9. The image should look like something you would see on Pinterest under "beautiful educational infographic" or "stunning learning poster".
+
 === FEW-SHOT EXAMPLES ===
 
-EXAMPLE 1 — UML Course:
-Content keywords: class diagram, sequence diagram, use case, actor, inheritance, association, multiplicity
-→ image_prompt: "UML class diagram showing three light purple rectangular boxes with THREE compartments each: top compartment has bold class name (Animal, Dog, Cat), middle compartment lists typed attributes (name: String, age: Integer), bottom compartment lists methods with parentheses (speak(), move()). Solid line with filled triangle arrowhead pointing from Dog to Animal showing inheritance. Solid line with filled triangle arrowhead pointing from Cat to Animal. Steel blue background for parent class, mint green for child classes. Clean flat design, white background, sharp edges, professional technical diagram, no shadows, no gradients, no generic icons."
-→ caption: "Les diagrammes de classes UML modélisent les relations d'héritage entre les objets du système."
+EXAMPLE 1 — Artificial Intelligence Course:
+Content keywords: neural network, deep learning, layers, training, dataset, classification
+→ image_prompt: "Vibrant educational infographic poster about Deep Learning and Neural Networks. Top banner: bold white title DEEP LEARNING on deep navy gradient background with glowing brain icon. Three large rounded cards below: LEFT CARD in deep teal — large layered-circles neural network pictogram, bold title INPUT LAYER, bullets: Raw data entry / Images, text, numbers / 784 input nodes. CENTER CARD in rich purple — interconnected nodes with flowing arrows pictogram, bold title HIDDEN LAYERS, bullets: Pattern extraction / Weighted connections / ReLU activation. RIGHT CARD in coral orange — target output icon, bold title OUTPUT LAYER, bullets: Classification result / Softmax probabilities / Confidence score. Connecting gradient arrows between cards showing left-to-right data flow. Bottom dark ribbon with colored pill tags: Backpropagation, Gradient Descent, Epochs, Loss Function, Overfitting. Background: very light blue-gray. Bold shadows on cards, rounded corners, professional vibrant e-learning poster style."
+→ caption: "Un réseau de neurones apprend par rétropropagation à classifier les données d'entraînement."
 
-EXAMPLE 2 — Artificial Intelligence Course:
-Content keywords: neural network, deep learning, backpropagation, layers, neurons, training, dataset
-→ image_prompt: "Deep learning neural network diagram showing four vertical columns of circles: leftmost column has 4 steel blue input nodes labeled with data icons, two middle columns have 6 coral red hidden layer nodes each connected by thin gray weighted arrows to every node in adjacent columns, rightmost column has 2 amber yellow output nodes. Curved orange backpropagation arrow looping from output back to input along the bottom. Small dataset rectangle in bottom left feeding into input layer with dashed arrow. Clean flat design, white background, sharp edges, professional, no shadows, no generic icons."
-→ caption: "Un réseau de neurones profond apprend par rétropropagation à partir de données d'entraînement."
-
-EXAMPLE 3 — Database Course:
+EXAMPLE 2 — Database Course:
 Content keywords: SQL, tables, primary key, foreign key, joins, relational model, normalization
-→ image_prompt: "Relational database ER diagram showing three entity rectangles: left rectangle labeled STUDENT with oval attributes (StudentID underlined as primary key, Name, Email), center diamond shape labeled ENROLLS with line to both entities showing multiplicity (1 and N), right rectangle labeled COURSE with oval attributes (CourseID underlined, Title, Credits). Steel blue rectangles for entities, amber yellow diamond for relationship, mint green ovals for attributes. Solid lines connecting all shapes. Bottom section shows two SQL table grids with highlighted steel blue primary key column and coral red foreign key column connected by orange JOIN arrow. Clean flat design, white background, sharp edges, professional technical diagram, no shadows, no generic icons."
-→ caption: "Le modèle entité-association représente les données et leurs relations avant la création des tables SQL."
+→ image_prompt: "Vibrant educational infographic poster about Relational Databases and SQL. Top banner: bold white title BASES DE DONNÉES RELATIONNELLES on deep blue gradient, database cylinder icon glowing in gold. Four rounded colored cards in a 2x2 grid: TOP-LEFT card royal blue — stacked table icon, bold title TABLES & CLÉS, bullets: Clé primaire unique / Clé étrangère = lien / Contraintes d'intégrité. TOP-RIGHT card forest green — Venn diagram circles icon, bold title LES JOINTURES SQL, bullets: INNER JOIN = intersection / LEFT JOIN = tout à gauche / Types de jointures. BOTTOM-LEFT card golden yellow with dark text — funnel normalization icon, bold title NORMALISATION, bullets: 1NF: atomicité / 2NF: dépendances / 3NF: transitivité. BOTTOM-RIGHT card coral orange — gears icon, bold title REQUÊTES SQL, bullets: SELECT, FROM, WHERE / GROUP BY, ORDER BY / Sous-requêtes imbriquées. Center connecting element: four arrows pointing to a central golden badge labeled SQL. Bottom dark ribbon with pills: SELECT, JOIN, INDEX, ACID, Clé Primaire. Gradient card backgrounds, rounded corners, strong shadows, vibrant professional poster."
+→ caption: "Le modèle relationnel organise les données en tables liées par des clés pour des requêtes SQL efficaces."
+
+EXAMPLE 3 — Logic and Reasoning Course:
+Content keywords: propositional logic, deductive reasoning, inductive reasoning, inference rules, resolution
+→ image_prompt: "Vibrant educational infographic poster about Logic and Automated Reasoning. Top banner: bold white title LOGIQUE & RAISONNEMENT on deep purple-to-teal gradient with glowing brain-and-gears icon. Three tall rounded cards side by side: LEFT CARD deep teal — top-down funnel icon with P→Q label, bold title RAISONNEMENT DÉDUCTIF in white, bullets in white: Prémisses → Conclusion / Modus Ponens: si P alors Q / Certitude absolue / Exemple: théorèmes. CENTER CARD golden amber — upward arrows converging icon, bold title RAISONNEMENT INDUCTIF in dark, bullets: Observations → Règle / Du particulier au général / Probabiliste / Exemple: cygnes blancs. RIGHT CARD coral red — omega symbol with lightning icon, bold title RÉSOLUTION & PREUVE in white, bullets: Clause P ∨ Q / Résolvante = nouvelle clause / Base de clauses / Réfutation par contradiction. Large curved arrow looping from RIGHT back to LEFT showing cycle of knowledge. Bottom dark navy ribbon with bright pill tags: Modus Ponens, Clause de Horn, Résolvante, Inférence, Réfutation. Overall: vivid poster aesthetic, bold typography, gradient card fills, rounded corners, glowing accent icons."
+→ caption: "Les méthodes de raisonnement logique permettent de déduire ou d'induire des conclusions à partir de prémisses."
 
 EXAMPLE 4 — Software Architecture Course:
-Content keywords: MVC, Model View Controller, layers, separation of concerns, design pattern
-→ image_prompt: "MVC architecture diagram showing three wide horizontal rectangular layers stacked vertically: top layer is steel blue labeled VIEW with browser icon inside, middle layer is coral red labeled CONTROLLER with gear-free arrow icon inside, bottom layer is mint green labeled MODEL with database cylinder icon inside. Bidirectional solid arrows between VIEW and CONTROLLER labeled request/response, bidirectional solid arrows between CONTROLLER and MODEL labeled query/data. On the right side, a separate amber yellow box shows Observer design pattern with two class boxes: top box labeled Subject with bold title compartment and notify() method compartment, bottom box labeled Observer with update() method compartment, connected by solid line with open arrowhead. Clean flat design, white background, sharp edges, professional, no shadows, no gradients, no generic decorative icons."
-→ caption: "L'architecture MVC sépare la logique métier, la présentation et le contrôle des interactions utilisateur."
-
-EXAMPLE 5 — Marketing Course:
-Content keywords: market segmentation, target audience, positioning, marketing mix, 4P, consumer behavior
-→ image_prompt: "Marketing strategy infographic showing two sections: left section displays a circle divided into four equal colored quadrants (steel blue for Product, coral red for Price, mint green for Place, amber yellow for Promotion) with bold text label inside each quadrant and small relevant icon (box, tag, map pin, megaphone). Right section shows a vertical funnel shape divided into four horizontal segments from wide to narrow: top wide segment in light purple labeled Awareness, second segment in steel blue labeled Interest, third in coral red labeled Decision, narrow bottom in mint green labeled Purchase. Small arrow pointing downward along the funnel right side. Clean flat design, white background, sharp edges, professional infographic style, no shadows, no gradients."
-→ caption: "Le mix marketing 4P et l'entonnoir de conversion guident la stratégie commerciale vers l'achat client."
+Content keywords: MVC, microservices, API, REST, layers, components, design patterns
+→ image_prompt: "Vibrant educational infographic poster about Software Architecture Patterns. Top banner: bold white title ARCHITECTURE LOGICIELLE on deep navy-to-indigo gradient with interconnected hexagons icon. Three large rounded cards: LEFT CARD rich purple — three horizontal layers icon with browser/gear/database symbols, bold title ARCHITECTURE MVC in white, bullets: View = interface utilisateur / Controller = logique métier / Model = données & BD. CENTER CARD forest green — six hexagonal service pods connected by lines icon, bold title MICROSERVICES in white, bullets: Services indépendants / Communication REST/API / Déploiement autonome. RIGHT CARD coral orange — two-way arrows with lock icon, bold title API REST in white, bullets: GET POST PUT DELETE / JSON / Stateless & scalable. Diagonal gradient banner cutting across the bottom of all cards with text: Design Patterns. Bottom dark ribbon with colored pills: SOLID, MVC, API Gateway, CI/CD, Docker. Background: very light warm gray. Vibrant poster, strong card shadows, rounded corners, professional modern style."
+→ caption: "Les architectures logicielles MVC et microservices organisent le code pour la maintenabilité et la scalabilité."
 
 === YOUR TASK ===
-Step 1 — Analyze the course content and identify:
-- The EXACT subject (one sentence)
-- The key visual concepts specific to this domain (list 3-5 elements)
-- The most appropriate diagram type (class diagram / sequence diagram / architecture layers / ER diagram / flowchart / infographic / other)
-
-Step 2 — Generate the image_prompt following ALL these rules:
-- Minimum 80 words, maximum 150 words
-- ALWAYS start with the diagram type and subject: "UML class diagram showing...", "Three-layer architecture diagram showing...", "Flowchart showing..."
-- Describe EVERY visual element with exact shapes: "wide rectangular box", "small diamond shape", "vertical dashed lifeline", "horizontal solid arrow"
-- Specify exact colors for EVERY element: "steel blue rectangle", "coral red arrow", "mint green layer", "amber yellow label", "light purple class box"
-- Describe spatial layout precisely: "top-left", "centered", "three equal columns", "vertical stack of four layers", "connected diagonally"
-- For UML class boxes: ALWAYS three compartments (bold class name top / typed attributes middle / methods with () bottom)
-- For arrows: specify exact type ("solid line with filled triangle = inheritance", "dashed line with open arrowhead = dependency", "solid line with diamond = aggregation")
-- NEVER use generic icons (no lightbulbs, no gears, no question marks, no puzzle pieces, no shields)
-- Describe ONE coherent specific diagram, not multiple unrelated elements
-- End ALWAYS with: "clean flat design, white background, sharp edges, professional technical diagram style, no shadows, no gradients, no decorative elements"
-- Match the language of labels in the image to the language of the course content
+Step 1 — Identify: the EXACT topic of this course in one sentence, and 3-5 core concepts to visualize.
+Step 2 — Generate the image_prompt:
+- MUST start with "Vibrant educational infographic poster about [EXACT TOPIC]."
+- MUST include a colored gradient title banner with icon
+- MUST have 3 or 4 large colored section cards (each with its own solid color fill — NO white cards)
+- MUST describe icons/pictograms for each section (relevant to the topic, not generic)
+- MUST include connecting visual elements (arrows, flows, central badge)
+- MUST end with a bottom dark ribbon with colored pill/badge keyword tags
+- MUST specify: "Vibrant poster aesthetic, bold typography, gradient fills, rounded corners, strong drop shadows, professional e-learning visual style."
+- Minimum 120 words — describe EVERY card, EVERY color, EVERY visual element
+- All text labels in the same language as the course content
 
 Step 3 — Generate the caption:
-- In FRENCH, 10-15 words, complete sentence, starts with capital letter, ends with period
-- Describes exactly what the specific diagram represents in relation to the course
+- In FRENCH, 10-15 words, complete sentence starting with capital, ending with period.
 
 Respond ONLY with this valid JSON (double quotes mandatory, absolutely zero extra text before or after):
 {{"image_prompt": "...", "caption": "..."}}"""
@@ -1266,39 +1268,65 @@ Respond ONLY with this valid JSON (double quotes mandatory, absolutely zero extr
 
     # ── Étape 4 : Gemini Image Generation ─────────────────────────
     IMAGE_MODELS_TO_TRY = [
+        "imagen-4.0-generate-preview-06-06",
+        "imagen-3.0-generate-002",
+        "imagen-3.0-generate-001",
+        "gemini-2.5-flash-preview-05-20",
         "gemini-2.5-flash-image",
         "gemini-3.1-flash-image",
         "gemini-3.1-flash-lite-image",
-        "gemini-2.5-flash-preview-05-20",
     ]
 
     last_error = None
     for img_model in IMAGE_MODELS_TO_TRY:
         try:
             logger.info("Essai modèle image : %s", img_model)
-            img_response = _client.models.generate_content(
-                model=img_model,
-                contents=image_prompt,
-                config=_types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
-                    temperature=1.0,
-                )
-            )
             img_b64 = None
             mime    = "image/png"
-            for part in (img_response.candidates[0].content.parts
-                         if img_response.candidates else []):
-                if hasattr(part, "inline_data") and part.inline_data:
-                    raw_bytes = part.inline_data.data
-                    mime      = part.inline_data.mime_type or "image/png"
-                    img_b64   = (
+
+            # ── Imagen models (imagen-3, imagen-4) : API generate_images ──────
+            if img_model.startswith("imagen"):
+                img_response = _client.models.generate_images(
+                    model=img_model,
+                    prompt=image_prompt,
+                    config=_types.GenerateImagesConfig(
+                        number_of_images=1,
+                        aspect_ratio="1:1",
+                    )
+                )
+                if img_response.generated_images:
+                    raw_bytes = img_response.generated_images[0].image.image_bytes
+                    mime = "image/png"
+                    img_b64 = (
                         base64.b64encode(raw_bytes).decode("utf-8")
                         if isinstance(raw_bytes, (bytes, bytearray))
                         else raw_bytes
                     )
-                    break
+
+            # ── Gemini models : API generate_content ──────────────────────────
+            else:
+                img_response = _client.models.generate_content(
+                    model=img_model,
+                    contents=image_prompt,
+                    config=_types.GenerateContentConfig(
+                        response_modalities=["IMAGE", "TEXT"],
+                        temperature=0.4,
+                    )
+                )
+                for part in (img_response.candidates[0].content.parts
+                             if img_response.candidates else []):
+                    if hasattr(part, "inline_data") and part.inline_data:
+                        raw_bytes = part.inline_data.data
+                        mime      = part.inline_data.mime_type or "image/png"
+                        img_b64   = (
+                            base64.b64encode(raw_bytes).decode("utf-8")
+                            if isinstance(raw_bytes, (bytes, bytearray))
+                            else raw_bytes
+                        )
+                        break
+
             if not img_b64:
-                raise ValueError("generate_content n'a retourné aucune image")
+                raise ValueError("Aucune image retournée par le modèle")
 
             logger.info("Image générée — model=%s course=%s mime=%s",
                         img_model, request.course_id, mime)
@@ -1323,4 +1351,3 @@ Respond ONLY with this valid JSON (double quotes mandatory, absolutely zero extr
             f"Dernière erreur : {str(last_error)}"
         )
     )
-   

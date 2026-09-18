@@ -13,6 +13,10 @@ require_once(__DIR__ . '/../../config.php');
 
 // Sécurité : réservé aux admins
 require_login();
+
+if (!is_siteadmin()) {
+    throw new moodle_exception('nopermissions', 'error', '', 'administration');
+}
 require_admin();
 
 // FIX : définir le contexte de page AVANT tout appel à $OUTPUT
@@ -27,23 +31,19 @@ if (!in_array($theme, ['dark', 'light'])) {
     $theme = 'light';
 }
 
-$selected_period = optional_param('period', 'all', PARAM_ALPHA);
-switch ($selected_period) {
-    case 'day':
-        $period_filter         = 'AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)';
-        $period_filter_no_alias = 'AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)';
-        break;
-    case 'week':
-        $period_filter         = 'AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
-        $period_filter_no_alias = 'AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
-        break;
-    case 'month':
-        $period_filter         = 'AND ec.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
-        $period_filter_no_alias = 'AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
-        break;
-    default:
-        $period_filter         = '';
-        $period_filter_no_alias = '';
+$selected_month = optional_param('month', '', PARAM_ALPHANUMEXT);
+if ($selected_month && !preg_match('/^\d{4}-\d{2}$/', $selected_month)) {
+    $selected_month = '';
+}
+if ($selected_month) {
+    $esc_month = $DB->sql_like_escape($selected_month);
+    $period_filter          = "AND DATE_FORMAT(ec.created_at, '%Y-%m') = '" . $esc_month . "'";
+    $period_filter_no_alias = "AND DATE_FORMAT(created_at, '%Y-%m') = '" . $esc_month . "'";
+    $period_filter_ul       = "AND DATE_FORMAT(`timestamp`, '%Y-%m') = '" . $esc_month . "'";
+} else {
+    $period_filter          = '';
+    $period_filter_no_alias = '';
+    $period_filter_ul       = '';
 }
 
 
@@ -54,6 +54,48 @@ switch ($selected_period) {
 // ══════════════════════════════════════════════════════════════════════════════
 $has_usage_logs    = $DB->get_manager()->table_exists('edora_usage_logs');
 $has_conversations = $DB->get_manager()->table_exists('edora_conversations');
+
+// ── Liste des mois disponibles (sidebar) ─────────────────────────────────────
+$available_months = [];
+if ($has_conversations) {
+    $months_rows = $DB->get_records_sql("
+        SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym,
+               DATE_FORMAT(created_at, '%M %Y') AS label_en,
+               DATE_FORMAT(created_at, '%Y')    AS yr,
+               DATE_FORMAT(created_at, '%m')    AS mo,
+               COUNT(*)                         AS nb
+        FROM {edora_conversations}
+        GROUP BY DATE_FORMAT(created_at, '%Y-%m'), DATE_FORMAT(created_at, '%M %Y'),
+                 DATE_FORMAT(created_at, '%Y'), DATE_FORMAT(created_at, '%m')
+        ORDER BY DATE_FORMAT(created_at, '%Y-%m') DESC
+    ");
+    foreach ($months_rows as $mr) {
+        $months_fr = [
+            '01'=>'Janvier','02'=>'Février','03'=>'Mars','04'=>'Avril',
+            '05'=>'Mai','06'=>'Juin','07'=>'Juillet','08'=>'Août',
+            '09'=>'Septembre','10'=>'Octobre','11'=>'Novembre','12'=>'Décembre'
+        ];
+        $available_months[] = [
+            'ym'    => $mr->ym,
+            'label' => ($months_fr[$mr->mo] ?? $mr->mo) . ' ' . $mr->yr,
+            'nb'    => (int)$mr->nb,
+        ];
+    }
+}
+// Si aucun mois sélectionné, prendre le plus récent par défaut
+if (empty($selected_month) && !empty($available_months)) {
+    $selected_month = $available_months[0]['ym'];
+    $esc_month = $DB->sql_like_escape($selected_month);
+    $period_filter          = "AND DATE_FORMAT(ec.created_at, '%Y-%m') = '" . $esc_month . "'";
+    $period_filter_no_alias = "AND DATE_FORMAT(created_at, '%Y-%m') = '" . $esc_month . "'";
+    $period_filter_ul       = "AND DATE_FORMAT(`timestamp`, '%Y-%m') = '" . $esc_month . "'";
+}
+
+// ── Label du mois sélectionné ─────────────────────────────────────────────────
+$selected_month_label = 'Toutes périodes';
+foreach ($available_months as $_m) {
+    if ($_m['ym'] === $selected_month) { $selected_month_label = $_m['label']; break; }
+}
 
 // ── Données usage API ─────────────────────────────────────────────────────────
 $global = (object)[
@@ -72,7 +114,8 @@ if ($has_usage_logs) {
             COALESCE(SUM(cost_usd),0)   AS cost_usd,
             COUNT(*)                    AS calls_count
         FROM {edora_usage_logs}
-    ");
+        WHERE 1=1 $period_filter_ul
+    ", [], IGNORE_MULTIPLE);
     if ($row) { $global = $row; }
 
     $bycourse_usage = $DB->get_records_sql("
@@ -85,6 +128,7 @@ if ($has_usage_logs) {
             COUNT(*)                       AS calls_count
         FROM {edora_usage_logs} ul
         LEFT JOIN {course} c ON c.id = ul.course_id
+        WHERE 1=1 $period_filter_ul
         GROUP BY ul.course_id, c.fullname
         ORDER BY cost_usd DESC
         LIMIT 20
@@ -106,7 +150,8 @@ if ($has_conversations) {
             COUNT(DISTINCT user_id)    AS total_students,
             COUNT(DISTINCT course_id)  AS total_courses_active
         FROM {edora_conversations}
-    ");
+        WHERE 1=1 $period_filter_no_alias
+    ", [], IGNORE_MULTIPLE);
     if ($agg) {
         $total_conversations  = (int)$agg->total_conversations;
         $total_students       = (int)$agg->total_students;
@@ -141,7 +186,7 @@ if ($has_conversations) {
             DATE_FORMAT(created_at, '%d/%m') AS label,
             COUNT(*) AS nb
         FROM {edora_conversations}
-        WHERE created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+        WHERE 1=1 $period_filter_no_alias
         GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d'), DATE_FORMAT(created_at, '%d/%m')
         ORDER BY DATE_FORMAT(created_at, '%Y-%m-%d') ASC
     ");
@@ -263,7 +308,74 @@ html, body {
 }
 
 /* ── Layout ────────────────────────────────────────────────────────────────── */
-#edo-admin { display:flex; flex-direction:column; min-height:100vh }
+#edo-admin { display:flex; flex-direction:row; min-height:100vh; align-items:flex-start; }
+
+/* ── Sidebar mois ──────────────────────────────────────────────────────────── */
+#edo-sidebar {
+    width: 190px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 14px 0 20px;
+    position: sticky;
+    top: 0;
+    transition: background .25s, border-color .25s;
+}
+.sidebar-title {
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--text-muted);
+    padding: 0 14px 10px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+}
+.sidebar-month {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    margin: 1px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: background .15s, color .15s;
+    gap: 6px;
+}
+.sidebar-month:hover {
+    background: var(--teal-pale);
+    color: var(--teal-dark);
+}
+.sidebar-month.active {
+    background: var(--teal);
+    color: #fff;
+    font-weight: 700;
+}
+.sidebar-month .sm-label { flex: 1; line-height: 1.3 }
+.sidebar-month .sm-badge {
+    font-size: 9px;
+    font-weight: 700;
+    background: rgba(0,0,0,.1);
+    padding: 1px 5px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.sidebar-month.active .sm-badge { background: rgba(255,255,255,.25) }
+.sidebar-empty {
+    padding: 20px 14px;
+    font-size: 11px;
+    color: var(--text-light);
+    text-align: center;
+}
+
+/* ── Main content ──────────────────────────────────────────────────────────── */
+#edo-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 /* ── Status dot (toujours utilisé dans edo-body si besoin futur) ─────────── */
 .edo-status {
@@ -399,18 +511,90 @@ html, body {
 @media(max-width:860px) {
     .kpi-grid { grid-template-columns: repeat(2,1fr) }
     .edo-row.two { grid-template-columns: 1fr }
+    #edo-sidebar { width:150px }
+}
+@media(max-width:600px) {
+    #edo-admin { flex-direction: column }
+    #edo-sidebar { width:100%; min-height:auto; flex-direction:row; flex-wrap:wrap; border-right:none; border-bottom:1px solid var(--border); padding:8px; position:static }
+    .sidebar-month { padding: 6px 10px; font-size:11px }
 }
 @media(max-width:480px) {
     .kpi-grid { grid-template-columns: 1fr 1fr }
     .edo-body { padding: 10px }
     .kpi-val  { font-size: 20px }
 }
+
+/* ── Print / PDF ────────────────────────────────────────────────────────────── */
+@media print {
+    #edo-sidebar, #edo-export-btn, .no-print { display: none !important }
+    #edo-admin { display: block }
+    #edo-main  { width: 100% }
+    .edo-body  { padding: 10px }
+    body { background: #fff; color: #000 }
+    .kpi-card, .edo-card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid }
+    .kpi-grid { grid-template-columns: repeat(4,1fr) }
+    .edo-row.two { grid-template-columns: 1fr 1fr }
+    #edo-print-header { display: block !important }
+    a { text-decoration: none; color: inherit }
+}
 </style>
 </head>
 <body>
 <div id="edo-admin">
 
+<!-- ══ SIDEBAR MOIS ══════════════════════════════════════════════════════════ -->
+<nav id="edo-sidebar">
+    <div class="sidebar-title">📅 Mois</div>
+    <?php if (empty($available_months)): ?>
+        <div class="sidebar-empty">Aucune donnée</div>
+    <?php else: ?>
+        <?php foreach ($available_months as $_m): ?>
+        <a class="sidebar-month <?= $_m['ym'] === $selected_month ? 'active' : '' ?>"
+           href="<?= (new moodle_url('/blocks/tutor_ai/admin_dashboard.php', ['theme' => $theme, 'month' => $_m['ym']]))->out() ?>">
+            <span class="sm-label"><?= s($_m['label']) ?></span>
+            <span class="sm-badge"><?= $_m['nb'] ?></span>
+        </a>
+        <?php endforeach; ?>
+    <?php endif; ?>
+</nav>
+
+<!-- ══ CONTENU PRINCIPAL ══════════════════════════════════════════════════════ -->
+<div id="edo-main">
+
+<!-- En-tête PDF (masqué à l'écran, visible à l'impression) -->
+<div id="edo-print-header" style="display:none; padding:16px; border-bottom:2px solid #0a9396; margin-bottom:12px;">
+    <div style="font-size:20px; font-weight:800; color:#005f73;">🦉 Edora AI — Rapport mensuel</div>
+    <div style="font-size:13px; color:#64748b; margin-top:4px;">
+        <?= s($selected_month_label) ?> — Généré le <?= date('d/m/Y à H:i') ?>
+    </div>
+</div>
+
     <div class="edo-body">
+
+        <!-- ══ EN-TÊTE DU MOIS SÉLECTIONNÉ + EXPORT PDF ════════════════════ -->
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+            <div>
+                <div class="edo-section-lbl">Période affichée</div>
+                <div style="font-size:16px; font-weight:800; color:var(--text); margin-top:2px;">
+                    <?= s($selected_month_label) ?>
+                </div>
+            </div>
+            <button id="edo-export-btn" onclick="window.print()" class="no-print"
+                style="display:inline-flex; align-items:center; gap:7px;
+                       background:var(--teal); color:#fff; border:none; border-radius:10px;
+                       padding:9px 18px; font-size:12px; font-weight:700; cursor:pointer;
+                       box-shadow:0 2px 10px rgba(10,147,150,.35); transition:background .15s;"
+                onmouseover="this.style.background='var(--teal-dark)'"
+                onmouseout="this.style.background='var(--teal)'">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+                Exporter PDF — <?= s($selected_month_label) ?>
+            </button>
+        </div>
 
         <!-- ══ ALERTE tables absentes ══════════════════════════════════════ -->
         <?php if (!$has_usage_logs || !$has_conversations): ?>
@@ -421,11 +605,11 @@ html, body {
             </svg>
             <span>
                 <?php if (!$has_usage_logs && !$has_conversations): ?>
-                    Tables <code>edora_usage_logs</code> et <code>edora_conversations</code> introuvables.
+                    Tables <code>mdl_edora_usage_logs</code> et <code>mdl_edora_conversations</code> introuvables.
                 <?php elseif (!$has_usage_logs): ?>
-                    Table <code>edora_usage_logs</code> introuvable — données de coûts API indisponibles.
+                    Table <code>mdl_edora_usage_logs</code> introuvable — données de coûts API indisponibles.
                 <?php else: ?>
-                    Table <code>edora_conversations</code> introuvable — statistiques pédagogiques indisponibles.
+                    Table <code>mdl_edora_conversations</code> introuvable — statistiques pédagogiques indisponibles.
                 <?php endif; ?>
                 Réinstallez le plugin depuis <strong>Administration → Plugins → Vue d'ensemble des plugins</strong>.
             </span>
@@ -433,7 +617,7 @@ html, body {
         <?php endif; ?>
 
         <!-- ══ KPIs PLATEFORME ═════════════════════════════════════════════ -->
-        <div class="edo-section-lbl">Vue globale plateforme</div>
+        <div class="edo-section-lbl">Vue globale — <?= s($selected_month_label) ?></div>
         <div class="kpi-grid">
 
             <div class="kpi-card blue">
@@ -466,7 +650,7 @@ html, body {
         </div>
 
         <!-- ══ KPIs TOKENS ════════════════════════════════════════════════ -->
-        <div class="edo-section-lbl">Consommation API Gemini</div>
+        <div class="edo-section-lbl">Consommation API Gemini — <?= s($selected_month_label) ?></div>
         <div class="kpi-grid">
 
             <div class="kpi-card">
@@ -505,7 +689,7 @@ html, body {
             <div class="edo-card">
                 <div class="card-head">
                     <div class="ico">📈</div>
-                    <h3>Activité — 14 derniers jours</h3>
+                    <h3>Activité — <?= s($selected_month_label) ?></h3>
                 </div>
                 <div class="card-body">
                     <?php if (!$has_conversations || empty($recent_activity)): ?>
@@ -610,6 +794,7 @@ html, body {
         <?php endif; ?>
 
     </div><!-- /edo-body -->
+</div><!-- /edo-main -->
 </div><!-- /edo-admin -->
 
 <?php if (!empty($chart_labels)): ?>

@@ -8,7 +8,7 @@ class block_tutor_ai extends block_base {
     }
 
     public function get_content() {
-        global $OUTPUT, $USER, $DB;
+        $url = new moodle_url($CFG->wwwroot . '/blocks/tutor_ai/admin_dashboard.php');
 
         if ($this->content !== null) {
             return $this->content;

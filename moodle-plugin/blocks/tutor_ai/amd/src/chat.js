@@ -907,6 +907,232 @@ function triggerMindMap(apiUrl, courseId) {
     }
 
     // ══════════════════════════════════════════════════════════
+    // IMAGE DEPUIS RÉSUMÉ DU COURS (pas de concept demandé)
+    // Flow : résumé RAG → Gemini image → affichage
+    // ══════════════════════════════════════════════════════════
+    async function triggerImageFromSummary(apiUrl, courseId) {
+        var btn = document.getElementById('edo-genimage-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Génération en cours…'; }
+
+        var loadingRow = appendMessage('', 'bot', true);
+
+        try {
+            // Étape 1 : récupérer le résumé du cours via /ask avec task=resume
+            var resumeResp = await fetch(apiUrl + '/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    question: 'Donne-moi un résumé structuré des concepts clés de ce cours',
+                    course_id: courseId,
+                    student_id: parseInt(studentId),
+                    conversation_id: conversationId || null,
+                    conversation_history: []
+                })
+            });
+            var resumeData = await resumeResp.json();
+            var summaryText = resumeData.answer || '';
+
+            if (!summaryText) throw new Error('Résumé vide');
+
+            // Étape 2 : construire un prompt enrichi pour une meilleure image pédagogique
+            // Extraire titre court du résumé
+            var summaryLines = summaryText.split('\n').map(function(l){ return l.replace(/^#+\s*/,'').replace(/\*\*/g,'').trim(); }).filter(function(l){ return l.length > 4; });
+            var courseTitle = summaryLines[0] ? summaryLines[0].substring(0, 60) : 'Ce cours';
+
+            var enrichedPrompt = [
+                'Create a stunning visually rich educational infographic poster for the topic: ' + courseTitle + '.',
+                'Course context: ' + summaryText.replace(/[#*]/g,'').replace(/\n/g,' ').substring(0, 600) + '.',
+                'STRICT VISUAL RULES:',
+                '(1) Large bold title banner at top with icon and gradient background — write the exact topic name as title.',
+                '(2) Split into EXACTLY 4 colorful cards/sections (card 1: blue, card 2: green, card 3: orange, card 4: purple — solid color fills, NOT white). Each card has a big pictogram icon, a bold section heading, and 2-3 key bullet points.',
+                '(3) CRITICAL — Typography accuracy: all section headings and labels MUST be spell-checked. Write each word carefully letter by letter. No typos, no missing letters, no doubled letters. Each card heading should be a clear, correct word: e.g. "DÉFINITION", "EXEMPLES", "APPLICATIONS", "CONCEPTS CLÉS".',
+                '(4) Use rich visual metaphors matching the topic: gears, brain, network graph, lightbulb, magnifying glass, data charts, molecular structure, arrows, etc.',
+                '(5) Bottom section: horizontal colored timeline or badge row showing 4-5 key concept keywords — each keyword must be spelled correctly.',
+                '(6) Style: vibrant modern Canva-style infographic, bold gradient colors, rounded corners, drop shadows, high contrast.',
+                '(7) All text in the same language as the course. Large readable fonts. Clear visual hierarchy.',
+                '(8) NO plain white boxes. NO minimal/wireframe style. Rich colors everywhere.',
+                '(9) Resolution: sharp detailed professional poster quality.'
+            ].join(' ');
+
+            var resp = await fetch(apiUrl + '/generate-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    course_id: courseId,
+                    student_id: parseInt(studentId),
+                    concept: enrichedPrompt
+                })
+            });
+
+            if (loadingRow && loadingRow.parentNode) loadingRow.remove();
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+            var data = await resp.json();
+            var mime   = data.mime_type  || 'image/jpeg';
+            var imgSrc = data.image_url  ||
+                (data.image_b64 ? ('data:' + mime + ';base64,' + data.image_b64) : null);
+            if (!imgSrc) throw new Error('Aucune image reçue');
+
+            var messages = document.getElementById('edo-messages');
+            var row = document.createElement('div');
+            row.className = 'edo-bot-row';
+            var av = document.createElement('div');
+            av.className = 'edo-bot-avatar';
+            av.innerHTML = AVATAR_IMG_SM;
+            row.appendChild(av);
+
+            var bubble = document.createElement('div');
+            bubble.className = 'edo-bubble edo-bubble--bot';
+            bubble.style.cssText = 'max-width:92%;width:92%;';
+
+            var caption = document.createElement('div');
+            caption.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--edo-text-muted);margin-bottom:8px;';
+            caption.textContent = '🖼️ ' + (data.caption || 'Aperçu visuel du cours');
+
+            var imgWrapper = document.createElement('div');
+            imgWrapper.style.cssText = 'position:relative;border-radius:10px;overflow:hidden;border:1.5px solid var(--edo-border);box-shadow:0 2px 12px rgba(10,147,150,0.12);background:#f0f7f6;cursor:zoom-in;';
+
+            var imgEl = document.createElement('img');
+            imgEl.alt = 'Illustration du cours';
+            imgEl.style.cssText = 'width:100%;display:block;border-radius:10px;transition:opacity 0.4s ease;opacity:0;';
+
+            var spinner = document.createElement('div');
+            spinner.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f0f7f6;gap:8px;min-height:180px;';
+            spinner.innerHTML = '<div style="width:28px;height:28px;border:3px solid #d1e8e4;border-top-color:#0a9396;border-radius:50%;animation:edo-spin 0.8s linear infinite;"></div><span style="font-size:11px;color:#6b7280;">Chargement de l\'image…</span>';
+            if (!document.getElementById('edo-spin-style')) {
+                var sp2 = document.createElement('style');
+                sp2.id = 'edo-spin-style';
+                sp2.textContent = '@keyframes edo-spin{to{transform:rotate(360deg)}}';
+                document.head.appendChild(sp2);
+            }
+            imgWrapper.appendChild(spinner);
+            imgWrapper.appendChild(imgEl);
+            imgEl.onload  = function() { spinner.style.display = 'none'; imgEl.style.opacity = '1'; };
+            imgEl.onerror = function() { spinner.innerHTML = '<span style="font-size:12px;color:#ef4444;">⚠️ Image indisponible</span>'; };
+            imgEl.src = imgSrc;
+
+            // ── Lightbox (réutiliser le même singleton) ──
+            if (!document.getElementById('edo-lightbox-style')) {
+                var lbStyle2 = document.createElement('style');
+                lbStyle2.id = 'edo-lightbox-style';
+                lbStyle2.textContent = [
+                    '#edo-lightbox{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;',
+                    'background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);',
+                    'opacity:0;transition:opacity 0.22s ease;pointer-events:none;}',
+                    '#edo-lightbox.edo-lb-open{opacity:1;pointer-events:all;}',
+                    '#edo-lightbox img{max-width:90vw;max-height:86vh;border-radius:12px;',
+                    'box-shadow:0 8px 48px rgba(0,0,0,0.45);transform:scale(0.92);',
+                    'transition:transform 0.22s ease;}',
+                    '#edo-lightbox.edo-lb-open img{transform:scale(1);}',
+                    '#edo-lb-toolbar{position:absolute;top:16px;right:16px;display:flex;gap:10px;}',
+                    '#edo-lb-toolbar button{background:rgba(255,255,255,0.18);border:none;border-radius:8px;',
+                    'padding:8px 14px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;',
+                    'backdrop-filter:blur(4px);display:flex;align-items:center;gap:6px;transition:background 0.15s;}',
+                    '#edo-lb-toolbar button:hover{background:rgba(255,255,255,0.32);}',
+                    '#edo-lb-close{font-size:20px!important;padding:6px 12px!important;}'
+                ].join('');
+                document.head.appendChild(lbStyle2);
+            }
+            var lb2 = document.getElementById('edo-lightbox');
+            if (!lb2) {
+                lb2 = document.createElement('div');
+                lb2.id = 'edo-lightbox';
+                lb2.innerHTML = [
+                    '<div id="edo-lb-toolbar">',
+                    '<button id="edo-lb-download">',
+                    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+                    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+                    '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+                    '</svg> Télécharger</button>',
+                    '<button id="edo-lb-close">✕</button>',
+                    '</div>',
+                    '<img id="edo-lb-img" src="" alt="Illustration agrandie"/>'
+                ].join('');
+                document.body.appendChild(lb2);
+                lb2.addEventListener('click', function(e) {
+                    if (e.target === lb2 || e.target.id === 'edo-lb-close' || e.target.closest('#edo-lb-close')) {
+                        lb2.classList.remove('edo-lb-open');
+                    }
+                });
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') lb2.classList.remove('edo-lb-open');
+                });
+            }
+            imgWrapper.addEventListener('click', function() {
+                var lbImg2 = document.getElementById('edo-lb-img');
+                var lbDl2  = document.getElementById('edo-lb-download');
+                lbImg2.src = imgSrc;
+                lbDl2.onclick = function(e) {
+                    e.stopPropagation();
+                    var a = document.createElement('a');
+                    a.href = imgSrc;
+                    a.download = 'illustration-cours-' + Date.now() + '.png';
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                };
+                lb2.classList.add('edo-lb-open');
+            });
+
+            // ── Bouton télécharger sous l'image ──
+            var dlBar2 = document.createElement('div');
+            dlBar2.style.cssText = 'display:flex;justify-content:flex-end;margin-top:6px;';
+            var dlBtn2 = document.createElement('button');
+            dlBtn2.style.cssText = [
+                'display:inline-flex;align-items:center;gap:5px;',
+                'background:transparent;border:1.5px solid var(--edo-border);',
+                'border-radius:7px;padding:4px 11px;font-size:11.5px;font-weight:600;',
+                'color:var(--edo-text-muted);cursor:pointer;transition:all 0.15s;'
+            ].join('');
+            dlBtn2.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Télécharger';
+            dlBtn2.addEventListener('mouseenter', function(){ dlBtn2.style.background='var(--edo-bg-hover,#f0f7f6)'; dlBtn2.style.color='var(--edo-primary,#0a9396)'; });
+            dlBtn2.addEventListener('mouseleave', function(){ dlBtn2.style.background='transparent'; dlBtn2.style.color='var(--edo-text-muted)'; });
+            dlBtn2.addEventListener('click', function() {
+                var a = document.createElement('a');
+                a.href = imgSrc;
+                a.download = 'illustration-cours-' + Date.now() + '.png';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            });
+            dlBar2.appendChild(dlBtn2);
+
+            // ── Bouton Regénérer (résumé cours) ──
+            var regenBtn2 = document.createElement('button');
+            regenBtn2.style.cssText = [
+                'display:inline-flex;align-items:center;gap:5px;margin-left:6px;',
+                'background:transparent;border:1.5px solid var(--edo-border);',
+                'border-radius:7px;padding:4px 11px;font-size:11.5px;font-weight:600;',
+                'color:var(--edo-text-muted);cursor:pointer;transition:all 0.15s;'
+            ].join('');
+            regenBtn2.innerHTML = '🔄 Regénérer';
+            regenBtn2.title = 'Regénérer une nouvelle version de cette image';
+            regenBtn2.addEventListener('mouseenter', function(){ regenBtn2.style.background='var(--edo-bg-hover,#f0f7f6)'; regenBtn2.style.color='var(--edo-primary,#0a9396)'; });
+            regenBtn2.addEventListener('mouseleave', function(){ regenBtn2.style.background='transparent'; regenBtn2.style.color='var(--edo-text-muted)'; });
+            regenBtn2.addEventListener('click', function() {
+                regenBtn2.disabled = true;
+                regenBtn2.textContent = '⏳';
+                triggerImageFromSummary(apiUrl, courseId);
+            });
+            dlBar2.appendChild(regenBtn2);
+
+            var ts2 = document.createElement('div'); ts2.className = 'edo-timestamp'; ts2.textContent = getTime();
+
+            bubble.appendChild(caption);
+            bubble.appendChild(imgWrapper);
+            bubble.appendChild(dlBar2);
+            bubble.appendChild(ts2);
+            row.appendChild(bubble);
+            messages.appendChild(row);
+            messages.scrollTop = messages.scrollHeight;
+
+        } catch(e) {
+            if (loadingRow && loadingRow.parentNode) loadingRow.remove();
+            appendMessage('❌ Erreur lors de la génération de l\'image : ' + e.message, 'bot', false);
+            console.error('[Edora] Image error:', e);
+        } finally {
+            var SVG_IMG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+            if (btn) { btn.disabled = false; btn.innerHTML = SVG_IMG + ' Image'; }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
     // GÉNÉRATION D'IMAGE EXPLICATIVE
     // ══════════════════════════════════════════════════════════
     async function triggerGenerateImage(apiUrl, courseId,concept) {
@@ -916,10 +1142,25 @@ function triggerMindMap(apiUrl, courseId) {
 
         var loadingRow = appendMessage('', 'bot', true);
         try {
+            // Enrichir le concept avec des instructions de style pédagogique
+            var enrichedConcept = [
+                'Create a stunning visually rich educational infographic poster explaining: ' + concept + '.',
+                'STRICT VISUAL RULES:',
+                '(1) Large bold title banner at top with a colorful gradient background and a relevant icon/emoji — the title must be the exact concept being explained.',
+                '(2) Split content into EXACTLY 4 vivid colored sections/cards (card 1: blue, card 2: teal/green, card 3: orange, card 4: purple — solid color fills, NOT white background). Each section has: a large icon or pictogram, a bold section heading, and 2-3 key bullet points.',
+                '(3) CRITICAL — Spelling accuracy: every heading, label, and keyword MUST be spelled correctly with no typos. Write words letter by letter carefully. Suggested card headings (pick relevant ones or similar correct words): "DÉFINITION", "FONCTIONNEMENT", "EXEMPLES", "AVANTAGES", "APPLICATIONS", "TYPES", "HISTOIRE", "CONCEPTS CLÉS", "PROPRIÉTÉS", "ALGORITHME".',
+                '(4) Include rich visual elements matching the topic: brain illustrations, gears, network nodes, data flow arrows, chemical structures, mathematical diagrams, code blocks, circuit boards — whatever fits best.',
+                '(5) Add a bottom colored banner with 4-5 key concept keywords shown as colored badge/pill tags — each spelled correctly.',
+                '(6) Style: vibrant professional Canva/Visme-style infographic, bold saturated colors, gradients, rounded cards with shadows, high visual impact.',
+                '(7) All text in the same language as the concept. Large readable typography. Clear visual hierarchy with title > section headers > body text.',
+                '(8) NEVER use plain white boxes on white background. NEVER use minimalist wireframe style. Every section must have color.',
+                '(9) Make it look like a high-quality educational poster that could be printed and put on a classroom wall.'
+            ].join(' ');
+
             var resp = await fetch(apiUrl + '/generate-image', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ course_id: courseId, student_id: parseInt(studentId),concept })
+                body: JSON.stringify({ course_id: courseId, student_id: parseInt(studentId), concept: enrichedConcept })
             });
             if (loadingRow && loadingRow.parentNode) loadingRow.remove();
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1061,6 +1302,25 @@ console.log('DEBUG image response:', data);
                 document.body.removeChild(a);
             });
             dlBar.appendChild(dlBtn);
+
+            // ── Bouton Regénérer ──
+            var regenBtn = document.createElement('button');
+            regenBtn.style.cssText = [
+                'display:inline-flex;align-items:center;gap:5px;margin-left:6px;',
+                'background:transparent;border:1.5px solid var(--edo-border);',
+                'border-radius:7px;padding:4px 11px;font-size:11.5px;font-weight:600;',
+                'color:var(--edo-text-muted);cursor:pointer;transition:all 0.15s;'
+            ].join('');
+            regenBtn.innerHTML = '🔄 Regénérer';
+            regenBtn.title = 'Regénérer une nouvelle version de cette image';
+            regenBtn.addEventListener('mouseenter', function(){ regenBtn.style.background='var(--edo-bg-hover,#f0f7f6)'; regenBtn.style.color='var(--edo-primary,#0a9396)'; });
+            regenBtn.addEventListener('mouseleave', function(){ regenBtn.style.background='transparent'; regenBtn.style.color='var(--edo-text-muted)'; });
+            regenBtn.addEventListener('click', function() {
+                regenBtn.disabled = true;
+                regenBtn.textContent = '⏳';
+                triggerGenerateImage(apiUrl, courseId, concept);
+            });
+            dlBar.appendChild(regenBtn);
 
             var ts = document.createElement('div'); ts.className = 'edo-timestamp'; ts.textContent = getTime();
 
@@ -1381,20 +1641,48 @@ if (nextCard) {
     async function sendQuestion(question,apiUrl,courseId){var sendBtn=document.getElementById('edo-send');var input=document.getElementById('edo-input');lastQuestion=question;lastApiUrl=apiUrl;lastCourseId=courseId;
         
         
-        // Détecter si l'étudiant demande une image
-const imageKeywords = [
-    'génère une image', 'genere une image', 'génerer une image',
-    'illustre', 'montre moi une image', 'image de', 'image sur',
-    'visualise', 'dessine', 'schéma de', 'schema de', 'generate image',
-    'show image', 'draw'
+        // Détecter si l'étudiant demande une image sur un concept précis
+const imagePatterns = [
+    // Patterns avec capture du concept (ordre : du plus précis au plus général)
+    { re: /(?:génère|genere|génerer|générer|crée|cree|faire?|fais)\s+(?:une?\s+)?(?:image|illustration|infographie|schéma|schema|poster|visuel)\s+(?:sur|de|du|des|d[''`])\s+(.+)/i, group: 1 },
+    { re: /(?:montre|affiche|visualise)\s+(?:moi\s+)?(?:une?\s+)?(?:image|illustration|schéma|schema)\s+(?:sur|de|du|des|d[''`])\s+(.+)/i, group: 1 },
+    { re: /(?:image|illustration|infographie|schéma|schema)\s+(?:sur|de|du|des|d[''`])\s+(.+)/i, group: 1 },
+    { re: /(?:dessine|illustre)\s+(?:moi\s+)?(.+)/i, group: 1 },
+    { re: /(?:explain|show|draw|generate|create)\s+(?:an?\s+)?(?:image|illustration|diagram|infographic)\s+(?:of|about|on)\s+(.+)/i, group: 1 },
+    { re: /(?:image|diagram|illustration)\s+(?:of|about|on)\s+(.+)/i, group: 1 },
+    // Fallback : mots-clés simples sans capture
+    { re: /(?:génère une image|genere une image|visualise|show image|generate image)/i, group: null }
 ];
 const questionLower = question.toLowerCase();
-const isImageRequest = imageKeywords.some(kw => questionLower.includes(kw));
+
+let isImageRequest = false;
+let imageConcept = null;
+
+for (var _pi = 0; _pi < imagePatterns.length; _pi++) {
+    var _pat = imagePatterns[_pi];
+    var _m = question.match(_pat.re);
+    if (_m) {
+        isImageRequest = true;
+        if (_pat.group !== null && _m[_pat.group]) {
+            // Nettoyer le concept extrait : supprimer ponctuation finale, articles résiduels
+            imageConcept = _m[_pat.group]
+                .trim()
+                .replace(/[?.!,;:]+$/, '')
+                .replace(/^(?:le|la|les|un|une|des|du|de|l[''`])\s+/i, '')
+                .trim();
+        }
+        break;
+    }
+}
+
 if (isImageRequest) {
     appendMessage(question, 'user');
-    let concept = question;
-    imageKeywords.forEach(kw => { concept = concept.toLowerCase().replace(kw, '').trim(); });
-    triggerGenerateImage(apiUrl, courseId, concept);
+    // Si pas de concept extrait, utiliser la question nettoyée comme fallback
+    var conceptToUse = imageConcept || question
+        .replace(/(?:génère|genere|génerer|générer|illustre|dessine|montre|visualise|affiche|image|illustration|schéma|schema|infographie|generate|draw|show|diagram)\s*/gi, '')
+        .trim();
+    if (!conceptToUse || conceptToUse.length < 2) conceptToUse = question;
+    triggerGenerateImage(apiUrl, courseId, conceptToUse);
     sendBtn.disabled = false;
     input.disabled = false;
     return;
@@ -1545,7 +1833,8 @@ if(data.conversation_id){conversationId=data.conversation_id;localStorage.setIte
                     // Afficher le message utilisateur visible dans le chat, puis générer l'image
                     var userMsg = btn.dataset.question || 'Génère moi une image qui explique ce cours';
                     appendMessage(userMsg, 'user');
-                    triggerGenerateImage(apiUrl, courseId);
+                    // FIX : flow résumé → image (pas de concept demandé à l'utilisateur)
+                    triggerImageFromSummary(apiUrl, courseId);
                     return;
                 }
                 var q = btn.dataset.question;
@@ -1737,7 +2026,13 @@ if (bell) {
         e.stopPropagation();
         var panel = document.getElementById('edo-notif-panel');
         if (panel) {
-            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            var isOpening = panel.style.display === 'none';
+            panel.style.display = isOpening ? 'block' : 'none';
+            // FIX : remettre badge à 0 quand on ouvre le panel
+            if (isOpening) {
+                var badgeEl = bell.querySelector('span[style*="background:#e63946"]');
+                if (badgeEl) badgeEl.style.display = 'none';
+            }
         }
     });
 }
