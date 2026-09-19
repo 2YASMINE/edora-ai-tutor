@@ -101,7 +101,7 @@ edora-ai-tutor/
 
 ## Documentation
 
-👉 Voir [`docs/admin-guide.html`](docs/admin-guide.html) pour le guide administrateur complet :
+👉 Voir [`docs/admin-guide.html`](docs/Admin_Guide.html) pour le guide administrateur complet :
 architecture détaillée, endpoints API, schéma base de données, troubleshooting.
 
 ---

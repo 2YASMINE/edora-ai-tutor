@@ -433,6 +433,7 @@ async def ask(request: AskRequest):
 
     # ── Détection lacunes : logger si score faible ──────────────────
     SIMILARITY_THRESHOLD = 0.5
+    max_score = 0.0
     if results:
         max_score = max(1 - chunk["distance"] for chunk in results)
         if max_score < SIMILARITY_THRESHOLD:
