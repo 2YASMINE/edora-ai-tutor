@@ -7,7 +7,7 @@ from routers.flashcards import router as flashcards_router
 from dotenv import load_dotenv
 from db.migrations import run_migrations
 from routers.export import router as export_router
-from routers.xp import router as xp_router
+from routers.xp import router as xp_router 
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
