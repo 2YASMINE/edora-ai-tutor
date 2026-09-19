@@ -886,6 +886,8 @@ function triggerMindMap(apiUrl, courseId) {
             statKnownN.textContent  = known;
             statReviewN.textContent = review;
             messages.scrollTop = messages.scrollHeight;
+
+
         }
 
         function restart() {
@@ -907,23 +909,267 @@ function triggerMindMap(apiUrl, courseId) {
     }
 
     // ══════════════════════════════════════════════════════════
+    // IMAGE DEPUIS RÉSUMÉ DU COURS (pas de concept demandé)
+    // Flow : résumé RAG → Gemini image → affichage
+    // ══════════════════════════════════════════════════════════
+    async function triggerImageFromSummary(apiUrl, courseId) {
+        var btn = document.getElementById('edo-genimage-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Génération en cours…'; }
+
+        var loadingRow = appendMessage('', 'bot', true);
+
+        try {
+            // Étape 1 : récupérer le résumé du cours via /ask avec task=resume
+            var resumeResp = await fetch(apiUrl + '/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    question: 'Donne-moi un résumé structuré des concepts clés de ce cours',
+                    course_id: courseId,
+                    student_id: parseInt(studentId),
+                    conversation_id: conversationId || null,
+                    conversation_history: []
+                })
+            });
+            var resumeData = await resumeResp.json();
+            var summaryText = resumeData.answer || '';
+
+            if (!summaryText) throw new Error('Résumé vide');
+
+            // Étape 2 : construire un prompt enrichi pour une meilleure image pédagogique
+            // Extraire titre court du résumé
+            var summaryLines = summaryText.split('\n').map(function(l){ return l.replace(/^#+\s*/,'').replace(/\*\*/g,'').trim(); }).filter(function(l){ return l.length > 4; });
+            var courseTitle = summaryLines[0] ? summaryLines[0].substring(0, 60) : 'Ce cours';
+
+            var enrichedPrompt = [
+                'Create a stunning visually rich educational infographic poster for the topic: ' + courseTitle + '.',
+                'Course context: ' + summaryText.replace(/[#*]/g,'').replace(/\n/g,' ').substring(0, 600) + '.',
+                'STRICT VISUAL RULES:',
+                '(1) Large bold title banner at top with icon and gradient background — write the exact topic name as title.',
+                '(2) Split into EXACTLY 4 colorful cards/sections (card 1: blue, card 2: green, card 3: orange, card 4: purple — solid color fills, NOT white). Each card has a big pictogram icon, a bold section heading, and 2-3 key bullet points.',
+                '(3) CRITICAL — Typography accuracy: all section headings and labels MUST be spell-checked. Write each word carefully letter by letter. No typos, no missing letters, no doubled letters. Each card heading should be a clear, correct word: e.g. "DÉFINITION", "EXEMPLES", "APPLICATIONS", "CONCEPTS CLÉS".',
+                '(4) Use rich visual metaphors matching the topic: gears, brain, network graph, lightbulb, magnifying glass, data charts, molecular structure, arrows, etc.',
+                '(5) Bottom section: horizontal colored timeline or badge row showing 4-5 key concept keywords — each keyword must be spelled correctly.',
+                '(6) Style: vibrant modern Canva-style infographic, bold gradient colors, rounded corners, drop shadows, high contrast.',
+                '(7) All text in the same language as the course. Large readable fonts. Clear visual hierarchy.',
+                '(8) NO plain white boxes. NO minimal/wireframe style. Rich colors everywhere.',
+                '(9) Resolution: sharp detailed professional poster quality.'
+            ].join(' ');
+
+            var resp = await fetch(apiUrl + '/generate-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    course_id: courseId,
+                    student_id: parseInt(studentId),
+                    concept: enrichedPrompt
+                })
+            });
+
+            if (loadingRow && loadingRow.parentNode) loadingRow.remove();
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+            var data = await resp.json();
+            var mime   = data.mime_type  || 'image/jpeg';
+            var imgSrc = data.image_url  ||
+                (data.image_b64 ? ('data:' + mime + ';base64,' + data.image_b64) : null);
+            if (!imgSrc) throw new Error('Aucune image reçue');
+
+            var messages = document.getElementById('edo-messages');
+            var row = document.createElement('div');
+            row.className = 'edo-bot-row';
+            var av = document.createElement('div');
+            av.className = 'edo-bot-avatar';
+            av.innerHTML = AVATAR_IMG_SM;
+            row.appendChild(av);
+
+            var bubble = document.createElement('div');
+            bubble.className = 'edo-bubble edo-bubble--bot';
+            bubble.style.cssText = 'max-width:92%;width:92%;';
+
+            var caption = document.createElement('div');
+            caption.style.cssText = 'font-size:12.5px;font-weight:600;color:var(--edo-text-muted);margin-bottom:8px;';
+            caption.textContent = '🖼️ ' + (data.caption || 'Aperçu visuel du cours');
+
+            var imgWrapper = document.createElement('div');
+            imgWrapper.style.cssText = 'position:relative;border-radius:10px;overflow:hidden;border:1.5px solid var(--edo-border);box-shadow:0 2px 12px rgba(10,147,150,0.12);background:#f0f7f6;cursor:zoom-in;';
+
+            var imgEl = document.createElement('img');
+            imgEl.alt = 'Illustration du cours';
+            imgEl.style.cssText = 'width:100%;display:block;border-radius:10px;transition:opacity 0.4s ease;opacity:0;';
+
+            var spinner = document.createElement('div');
+            spinner.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f0f7f6;gap:8px;min-height:180px;';
+            spinner.innerHTML = '<div style="width:28px;height:28px;border:3px solid #d1e8e4;border-top-color:#0a9396;border-radius:50%;animation:edo-spin 0.8s linear infinite;"></div><span style="font-size:11px;color:#6b7280;">Chargement de l\'image…</span>';
+            if (!document.getElementById('edo-spin-style')) {
+                var sp2 = document.createElement('style');
+                sp2.id = 'edo-spin-style';
+                sp2.textContent = '@keyframes edo-spin{to{transform:rotate(360deg)}}';
+                document.head.appendChild(sp2);
+            }
+            imgWrapper.appendChild(spinner);
+            imgWrapper.appendChild(imgEl);
+            imgEl.onload  = function() { spinner.style.display = 'none'; imgEl.style.opacity = '1'; };
+            imgEl.onerror = function() { spinner.innerHTML = '<span style="font-size:12px;color:#ef4444;">⚠️ Image indisponible</span>'; };
+            imgEl.src = imgSrc;
+
+            // ── Lightbox (réutiliser le même singleton) ──
+            if (!document.getElementById('edo-lightbox-style')) {
+                var lbStyle2 = document.createElement('style');
+                lbStyle2.id = 'edo-lightbox-style';
+                lbStyle2.textContent = [
+                    '#edo-lightbox{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;',
+                    'background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);',
+                    'opacity:0;transition:opacity 0.22s ease;pointer-events:none;}',
+                    '#edo-lightbox.edo-lb-open{opacity:1;pointer-events:all;}',
+                    '#edo-lightbox img{max-width:90vw;max-height:86vh;border-radius:12px;',
+                    'box-shadow:0 8px 48px rgba(0,0,0,0.45);transform:scale(0.92);',
+                    'transition:transform 0.22s ease;}',
+                    '#edo-lightbox.edo-lb-open img{transform:scale(1);}',
+                    '#edo-lb-toolbar{position:absolute;top:16px;right:16px;display:flex;gap:10px;}',
+                    '#edo-lb-toolbar button{background:rgba(255,255,255,0.18);border:none;border-radius:8px;',
+                    'padding:8px 14px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;',
+                    'backdrop-filter:blur(4px);display:flex;align-items:center;gap:6px;transition:background 0.15s;}',
+                    '#edo-lb-toolbar button:hover{background:rgba(255,255,255,0.32);}',
+                    '#edo-lb-close{font-size:20px!important;padding:6px 12px!important;}'
+                ].join('');
+                document.head.appendChild(lbStyle2);
+            }
+            var lb2 = document.getElementById('edo-lightbox');
+            if (!lb2) {
+                lb2 = document.createElement('div');
+                lb2.id = 'edo-lightbox';
+                lb2.innerHTML = [
+                    '<div id="edo-lb-toolbar">',
+                    '<button id="edo-lb-download">',
+                    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+                    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+                    '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+                    '</svg> Télécharger</button>',
+                    '<button id="edo-lb-close">✕</button>',
+                    '</div>',
+                    '<img id="edo-lb-img" src="" alt="Illustration agrandie"/>'
+                ].join('');
+                document.body.appendChild(lb2);
+                lb2.addEventListener('click', function(e) {
+                    if (e.target === lb2 || e.target.id === 'edo-lb-close' || e.target.closest('#edo-lb-close')) {
+                        lb2.classList.remove('edo-lb-open');
+                    }
+                });
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') lb2.classList.remove('edo-lb-open');
+                });
+            }
+            imgWrapper.addEventListener('click', function() {
+                var lbImg2 = document.getElementById('edo-lb-img');
+                var lbDl2  = document.getElementById('edo-lb-download');
+                lbImg2.src = imgSrc;
+                lbDl2.onclick = function(e) {
+                    e.stopPropagation();
+                    var a = document.createElement('a');
+                    a.href = imgSrc;
+                    a.download = 'illustration-cours-' + Date.now() + '.png';
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                };
+                lb2.classList.add('edo-lb-open');
+            });
+
+            // ── Bouton télécharger sous l'image ──
+            var dlBar2 = document.createElement('div');
+            dlBar2.style.cssText = 'display:flex;justify-content:flex-end;margin-top:6px;';
+            var dlBtn2 = document.createElement('button');
+            dlBtn2.style.cssText = [
+                'display:inline-flex;align-items:center;gap:5px;',
+                'background:transparent;border:1.5px solid var(--edo-border);',
+                'border-radius:7px;padding:4px 11px;font-size:11.5px;font-weight:600;',
+                'color:var(--edo-text-muted);cursor:pointer;transition:all 0.15s;'
+            ].join('');
+            dlBtn2.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Télécharger';
+            dlBtn2.addEventListener('mouseenter', function(){ dlBtn2.style.background='var(--edo-bg-hover,#f0f7f6)'; dlBtn2.style.color='var(--edo-primary,#0a9396)'; });
+            dlBtn2.addEventListener('mouseleave', function(){ dlBtn2.style.background='transparent'; dlBtn2.style.color='var(--edo-text-muted)'; });
+            dlBtn2.addEventListener('click', function() {
+                var a = document.createElement('a');
+                a.href = imgSrc;
+                a.download = 'illustration-cours-' + Date.now() + '.png';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            });
+            dlBar2.appendChild(dlBtn2);
+
+            // ── Bouton Regénérer (résumé cours) ──
+            var regenBtn2 = document.createElement('button');
+            regenBtn2.style.cssText = [
+                'display:inline-flex;align-items:center;gap:5px;margin-left:6px;',
+                'background:transparent;border:1.5px solid var(--edo-border);',
+                'border-radius:7px;padding:4px 11px;font-size:11.5px;font-weight:600;',
+                'color:var(--edo-text-muted);cursor:pointer;transition:all 0.15s;'
+            ].join('');
+            regenBtn2.innerHTML = '🔄 Regénérer';
+            regenBtn2.title = 'Regénérer une nouvelle version de cette image';
+            regenBtn2.addEventListener('mouseenter', function(){ regenBtn2.style.background='var(--edo-bg-hover,#f0f7f6)'; regenBtn2.style.color='var(--edo-primary,#0a9396)'; });
+            regenBtn2.addEventListener('mouseleave', function(){ regenBtn2.style.background='transparent'; regenBtn2.style.color='var(--edo-text-muted)'; });
+            regenBtn2.addEventListener('click', function() {
+                regenBtn2.disabled = true;
+                regenBtn2.textContent = '⏳';
+                triggerImageFromSummary(apiUrl, courseId);
+            });
+            dlBar2.appendChild(regenBtn2);
+
+            var ts2 = document.createElement('div'); ts2.className = 'edo-timestamp'; ts2.textContent = getTime();
+
+            bubble.appendChild(caption);
+            bubble.appendChild(imgWrapper);
+            bubble.appendChild(dlBar2);
+            bubble.appendChild(ts2);
+            row.appendChild(bubble);
+            messages.appendChild(row);
+            messages.scrollTop = messages.scrollHeight;
+
+
+
+        } catch(e) {
+            if (loadingRow && loadingRow.parentNode) loadingRow.remove();
+            appendMessage('❌ Erreur lors de la génération de l\'image : ' + e.message, 'bot', false);
+            console.error('[Edora] Image error:', e);
+        } finally {
+            var SVG_IMG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+            if (btn) { btn.disabled = false; btn.innerHTML = SVG_IMG + ' Image'; }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
     // GÉNÉRATION D'IMAGE EXPLICATIVE
     // ══════════════════════════════════════════════════════════
-    async function triggerGenerateImage(apiUrl, courseId) {
+    async function triggerGenerateImage(apiUrl, courseId,concept) {
         var btn = document.getElementById('edo-genimage-btn');
         var SVG_IMG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
         if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Génération en cours…'; }
 
         var loadingRow = appendMessage('', 'bot', true);
         try {
+            // Enrichir le concept avec des instructions de style pédagogique
+            var enrichedConcept = [
+                'Create a stunning visually rich educational infographic poster explaining: ' + concept + '.',
+                'STRICT VISUAL RULES:',
+                '(1) Large bold title banner at top with a colorful gradient background and a relevant icon/emoji — the title must be the exact concept being explained.',
+                '(2) Split content into EXACTLY 4 vivid colored sections/cards (card 1: blue, card 2: teal/green, card 3: orange, card 4: purple — solid color fills, NOT white background). Each section has: a large icon or pictogram, a bold section heading, and 2-3 key bullet points.',
+                '(3) CRITICAL — Spelling accuracy: every heading, label, and keyword MUST be spelled correctly with no typos. Write words letter by letter carefully. Suggested card headings (pick relevant ones or similar correct words): "DÉFINITION", "FONCTIONNEMENT", "EXEMPLES", "AVANTAGES", "APPLICATIONS", "TYPES", "HISTOIRE", "CONCEPTS CLÉS", "PROPRIÉTÉS", "ALGORITHME".',
+                '(4) Include rich visual elements matching the topic: brain illustrations, gears, network nodes, data flow arrows, chemical structures, mathematical diagrams, code blocks, circuit boards — whatever fits best.',
+                '(5) Add a bottom colored banner with 4-5 key concept keywords shown as colored badge/pill tags — each spelled correctly.',
+                '(6) Style: vibrant professional Canva/Visme-style infographic, bold saturated colors, gradients, rounded cards with shadows, high visual impact.',
+                '(7) All text in the same language as the concept. Large readable typography. Clear visual hierarchy with title > section headers > body text.',
+                '(8) NEVER use plain white boxes on white background. NEVER use minimalist wireframe style. Every section must have color.',
+                '(9) Make it look like a high-quality educational poster that could be printed and put on a classroom wall.'
+            ].join(' ');
+
             var resp = await fetch(apiUrl + '/generate-image', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ course_id: courseId, student_id: parseInt(studentId) })
+                body: JSON.stringify({ course_id: courseId, student_id: parseInt(studentId), concept: enrichedConcept })
             });
             if (loadingRow && loadingRow.parentNode) loadingRow.remove();
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             var data = await resp.json();
+console.log('DEBUG image response:', data);
 
             var mime = data.mime_type || 'image/jpeg';
             var imgSrc = data.image_url || (data.image_b64 ? ('data:' + mime + ';base64,' + data.image_b64) : null);
@@ -1061,6 +1307,25 @@ function triggerMindMap(apiUrl, courseId) {
             });
             dlBar.appendChild(dlBtn);
 
+            // ── Bouton Regénérer ──
+            var regenBtn = document.createElement('button');
+            regenBtn.style.cssText = [
+                'display:inline-flex;align-items:center;gap:5px;margin-left:6px;',
+                'background:transparent;border:1.5px solid var(--edo-border);',
+                'border-radius:7px;padding:4px 11px;font-size:11.5px;font-weight:600;',
+                'color:var(--edo-text-muted);cursor:pointer;transition:all 0.15s;'
+            ].join('');
+            regenBtn.innerHTML = '🔄 Regénérer';
+            regenBtn.title = 'Regénérer une nouvelle version de cette image';
+            regenBtn.addEventListener('mouseenter', function(){ regenBtn.style.background='var(--edo-bg-hover,#f0f7f6)'; regenBtn.style.color='var(--edo-primary,#0a9396)'; });
+            regenBtn.addEventListener('mouseleave', function(){ regenBtn.style.background='transparent'; regenBtn.style.color='var(--edo-text-muted)'; });
+            regenBtn.addEventListener('click', function() {
+                regenBtn.disabled = true;
+                regenBtn.textContent = '⏳';
+                triggerGenerateImage(apiUrl, courseId, concept);
+            });
+            dlBar.appendChild(regenBtn);
+
             var ts = document.createElement('div'); ts.className = 'edo-timestamp'; ts.textContent = getTime();
 
             bubble.appendChild(caption);
@@ -1070,6 +1335,7 @@ function triggerMindMap(apiUrl, courseId) {
             row.appendChild(bubble);
             messages.appendChild(row);
             messages.scrollTop = messages.scrollHeight;
+
 
 
         } catch(e) {
@@ -1086,6 +1352,43 @@ function triggerMindMap(apiUrl, courseId) {
     // ══════════════════════════════════════════════════════════
     // HISTORIQUE
     // ══════════════════════════════════════════════════════════
+
+    /**
+     * Génère un titre lisible pour une conversation à partir du premier message.
+     * - Supprime les préfixes de politesse, raccourcit intelligemment.
+     * - Retourne un titre de 3-6 mots max, avec majuscule initiale.
+     */
+    function generateConvTitle(firstMessage) {
+        if (!firstMessage) return '💬 Nouvelle conversation';
+        var msg = firstMessage.trim()
+            .replace(/^(bonjour|salut|hello|hi|bonsoir|coucou)[,!.\s]*/i, '')
+            .replace(/^(peux[- ]tu|est[- ]ce que tu peux|peut[- ]on|pouvez[- ]vous|peux tu|peux-tu)\s+/i, '')
+            .replace(/^(explique[- ]moi|dis[- ]moi|montre[- ]moi|aide[- ]moi|c'est quoi|qu'est[- ]ce que|kesako|comment|pourquoi|qu[''`]est[- ]ce que|c'est quoi)\s+/i, '')
+            .replace(/^(génère|crée|fais|donne[- ]moi|résume|explique|décris|définis)\s+/i, '')
+            .trim();
+
+        // Icône contextuelle selon le sujet
+        var icon = '💬';
+        var lower = msg.toLowerCase();
+        if (/quiz|qcm|question/.test(lower))         icon = '📝';
+        else if (/résum|synthèse|synthese/.test(lower)) icon = '📄';
+        else if (/exemple|exercice/.test(lower))      icon = '💡';
+        else if (/image|illustr|schéma/.test(lower))  icon = '🖼️';
+        else if (/flashcard|carte/.test(lower))        icon = '🃏';
+        else if (/définit|défini|c'est quoi/.test(lower)) icon = '📚';
+        else if (/comment|pourquoi|expli/.test(lower)) icon = '🎓';
+
+        // Tronquer à ~45 caractères sur la frontière d'un mot
+        if (msg.length > 45) {
+            msg = msg.substring(0, 45).replace(/\s\S+$/, '') + '…';
+        }
+        if (!msg) return '💬 Conversation';
+        // Majuscule initiale
+        msg = msg.charAt(0).toUpperCase() + msg.slice(1);
+        return icon + ' ' + msg;
+    }
+
+
     async function loadConversation(convId, apiUrl, courseId) {
         try {
             var resp = await fetch(apiUrl + '/history?conversation_id=' + encodeURIComponent(convId) + '&course_id=' + courseId);
@@ -1168,10 +1471,15 @@ function triggerMindMap(apiUrl, courseId) {
                 var isActive = conv.conversation_id === conversationId;
                 var isDark = document.getElementById('edo-panel').getAttribute('data-theme') === 'dark';
                 var titleColor = isActive ? '#22d3ee' : (isDark ? '#e2e8f5' : '#111827');
+                // ── Titre intelligent : résumé contextuel de la 1ère question utilisateur ──
+                var rawTitle = conv.first_message || 'Conversation';
+                var convTitle = generateConvTitle(rawTitle);
+
                 var item = document.createElement('button');
-                item.style.cssText = 'width:100%;text-align:left;padding:11px 13px;border-radius:11px;cursor:pointer;border:1.5px solid ' + (isActive ? '#0a9396' : '#e5e7eb') + ';background:' + (isActive ? '#e9f5f2' : '#f9fafb') + ';transition:all 0.15s;display:flex;flex-direction:column;gap:4px;';
+                // Dimensions fixes pour toutes les cartes (height uniforme)
+                item.style.cssText = 'width:100%;text-align:left;padding:11px 13px;border-radius:11px;cursor:pointer;border:1.5px solid ' + (isActive ? '#0a9396' : '#e5e7eb') + ';background:' + (isActive ? '#e9f5f2' : '#f9fafb') + ';transition:all 0.15s;display:flex;flex-direction:column;gap:4px;height:70px;box-sizing:border-box;';
                 var metaColor = isDark ? 'rgba(100,116,139,0.8)' : '#9ca3af';
-                item.innerHTML = '<div style="font-size:13px;font-weight:500;color:' + titleColor + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">' + SVG.chat + '&nbsp; ' + (conv.first_message || 'Conversation') + '</div><div style="font-size:11px;color:' + metaColor + ';display:flex;gap:8px;"><span>' + formatDate(conv.created_at) + '</span><span>·</span><span>' + conv.message_count + ' messages</span>' + (isActive ? '<span style="color:#0a9396;font-weight:600;">· Active</span>' : '') + '</div>';
+                item.innerHTML = '<div style="font-size:13px;font-weight:500;color:' + titleColor + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;flex:1;">' + SVG.chat + '&nbsp; ' + convTitle + '</div><div style="font-size:11px;color:' + metaColor + ';display:flex;gap:8px;align-items:center;flex-shrink:0;"><span>' + formatDate(conv.created_at) + '</span><span>·</span><span>' + conv.message_count + ' msg</span>' + (isActive ? '<span style="color:#0a9396;font-weight:600;">· Active</span>' : '') + '</div>';
                 item.addEventListener('mouseenter', function () { if (!isActive) { item.style.background='#f0f7f6'; item.style.borderColor='#94d2bd'; } });
                 item.addEventListener('mouseleave', function () { if (!isActive) { item.style.background='#f9fafb'; item.style.borderColor='#e5e7eb'; } });
                 item.addEventListener('click', async function () { hp.remove(); await loadConversation(conv.conversation_id, apiUrl, courseId); });
@@ -1252,7 +1560,18 @@ function triggerMindMap(apiUrl, courseId) {
                         var expDiv = document.createElement('div');
                         expDiv.style.cssText = 'margin-top:10px;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.5;' + (isCorrect ? 'background:#f0fdf4;border:1px solid #86efac;color:#15803d;' : 'background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;');
                         expDiv.innerHTML = isCorrect ? '✅ <strong>Bonne réponse !</strong> ' + q.explanation : '❌ <strong>Mauvaise réponse.</strong> La bonne réponse est <strong>' + q.answer + '</strong>. ' + q.explanation;
-                        qDiv.appendChild(expDiv); messages.scrollTop = messages.scrollHeight;
+                        qDiv.appendChild(expDiv);
+
+// Scroll vers la prochaine question
+var allCards = container.querySelectorAll('.edo-quiz-card');
+var nextCard = allCards[idx + 1];
+if (nextCard) {
+    setTimeout(function() {
+        nextCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+} else {
+    messages.scrollTop = messages.scrollHeight;
+}
                         if (score.answered === score.total) {
                             var pct = Math.round((score.correct / score.total) * 100);
                             var scoreDiv = document.createElement('div'); scoreDiv.style.cssText = 'margin-top:6px;padding:14px;border-radius:10px;background:linear-gradient(135deg,#005f73,#0a9396);color:#fff;text-align:center;font-size:14px;';
@@ -1306,7 +1625,16 @@ function triggerMindMap(apiUrl, courseId) {
                     optContainer.querySelectorAll('button').forEach(function(b){b.style.cursor='default';var lm=b.innerHTML.match(/<strong>([A-D])\)<\/strong>/);var bL=lm?lm[1]:'';if(bL===correctLetter){b.style.background='#f0fdf4';b.style.borderColor='#22c55e';b.style.color='#15803d';}else if(b===btn&&!isCorrect){b.style.background='#fef2f2';b.style.borderColor='#ef4444';b.style.color='#dc2626';}else{b.style.opacity='0.4';}});
                     var expDiv=document.createElement('div');expDiv.style.cssText='margin-top:10px;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.5;'+(isCorrect?'background:#f0fdf4;border:1px solid #86efac;color:#15803d;':'background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;');
                     expDiv.innerHTML=isCorrect?'✅ <strong>Bonne réponse !</strong> '+explanation:'❌ <strong>Mauvaise réponse.</strong> La bonne réponse est <strong>'+correctLetter+'</strong>. '+explanation;
-                    qDiv.appendChild(expDiv);messages.scrollTop=messages.scrollHeight;
+                    qDiv.appendChild(expDiv);
+var allCards = container.querySelectorAll('.edo-quiz-card');
+var nextCard = allCards[idx + 1];
+if (nextCard) {
+    setTimeout(function() {
+        nextCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+} else {
+    messages.scrollTop = messages.scrollHeight;
+}
                     if(score.answered===score.total){var pct=Math.round((score.correct/score.total)*100);var scoreDiv=document.createElement('div');scoreDiv.style.cssText='margin-top:6px;padding:14px;border-radius:10px;background:linear-gradient(135deg,#005f73,#0a9396);color:#fff;text-align:center;font-size:14px;';scoreDiv.innerHTML=(pct>=80?'🎉':pct>=50?'👍':'💪')+' <strong>Score final : '+score.correct+'/'+score.total+' ('+pct+'%)</strong>';container.appendChild(scoreDiv);messages.scrollTop=messages.scrollHeight;}
                 });
                 optContainer.appendChild(btn);
@@ -1357,7 +1685,74 @@ function triggerMindMap(apiUrl, courseId) {
 
     async function checkAndTriggerLevelQuiz(question,apiUrl,courseId,convId,onProceed){if(levelQuizDone||levelQuizPending||isSmallTalk(question)){onProceed();return;}levelQuizPending=true;try{var resp=await fetch(apiUrl+'/level-quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({course_id:courseId,student_id:studentId,conversation_id:convId})});if(!resp.ok){levelQuizPending=false;onProceed();return;}var data=await resp.json();if(data.already_done){studentLevel=data.level;levelQuizDone=true;levelQuizPending=false;if(studentLevel)showLevelBadge(studentLevel);onProceed();return;}renderLevelQuiz(data.quiz,apiUrl,courseId,convId,function(correct,total){onProceed();});}catch(e){console.warn('[Edora] Erreur quiz niveau :',e);levelQuizPending=false;onProceed();}}
 
-    async function sendQuestion(question,apiUrl,courseId){var sendBtn=document.getElementById('edo-send');var input=document.getElementById('edo-input');lastQuestion=question;lastApiUrl=apiUrl;lastCourseId=courseId;sendBtn.disabled=true;input.disabled=true;clearSuggestions();if(window.speechSynthesis&&window.speechSynthesis.speaking)window.speechSynthesis.cancel();if(currentTtsBtn){resetTtsBtn(currentTtsBtn);currentTtsBtn=null;}appendMessage(question,'user');conversationHistory.push({role:'user',content:question});await checkAndTriggerLevelQuiz(question,apiUrl,courseId,conversationId,async function(){var loadingRow=appendMessage('','bot',true);try{var response=await fetch(apiUrl+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,course_id:courseId,student_id:studentId,conversation_id:conversationId,conversation_history:conversationHistory.slice(-6)})});loadingRow.remove();if(!response.ok)throw new Error('HTTP '+response.status);var data=await response.json();if(data.conversation_id){conversationId=data.conversation_id;localStorage.setItem('edo_conv_'+courseId,conversationId);}var msgEl=document.getElementById('edo-messages');var isQuiz=false;if(data.is_quiz_json===true)isQuiz=renderJsonQuiz(data.answer,msgEl);if(!isQuiz)isQuiz=renderInteractiveQuiz(data.answer,msgEl);if(!isQuiz)appendMessage(data.answer,'bot');conversationHistory.push({role:'assistant',content:data.answer});if(data.sources&&data.sources.length>0&&data.found_in_course)renderSources(data.sources,msgEl);if(data.follow_up_questions&&data.follow_up_questions.length>0)showSuggestions(data.follow_up_questions,apiUrl,courseId);if(data.is_quiz_json===true){setTimeout(function(){loadMastery(apiUrl,courseId);},1500);}}catch(error){if(document.querySelector('.edo-bubble--loading'))document.querySelector('.edo-bubble--loading').closest('.edo-bot-row').remove();appendMessage('⚠️ Je n\'arrive pas à joindre le serveur. Vérifie ta connexion et réessaie.','bot');console.error('[Edora Chat] Erreur fetch:',error);}finally{sendBtn.disabled=false;input.disabled=false;input.focus();}});if(levelQuizPending){sendBtn.disabled=false;input.disabled=false;}}
+    async function sendQuestion(question,apiUrl,courseId){var sendBtn=document.getElementById('edo-send');var input=document.getElementById('edo-input');lastQuestion=question;lastApiUrl=apiUrl;lastCourseId=courseId;
+        
+        
+        // Détecter si l'étudiant demande une image sur un concept précis
+const imagePatterns = [
+    // Patterns avec capture du concept (ordre : du plus précis au plus général)
+    { re: /(?:génère|genere|génerer|générer|crée|cree|faire?|fais)\s+(?:une?\s+)?(?:image|illustration|infographie|schéma|schema|poster|visuel)\s+(?:sur|de|du|des|d[''`])\s+(.+)/i, group: 1 },
+    { re: /(?:montre|affiche|visualise)\s+(?:moi\s+)?(?:une?\s+)?(?:image|illustration|schéma|schema)\s+(?:sur|de|du|des|d[''`])\s+(.+)/i, group: 1 },
+    { re: /(?:image|illustration|infographie|schéma|schema)\s+(?:sur|de|du|des|d[''`])\s+(.+)/i, group: 1 },
+    { re: /(?:dessine|illustre)\s+(?:moi\s+)?(.+)/i, group: 1 },
+    { re: /(?:explain|show|draw|generate|create)\s+(?:an?\s+)?(?:image|illustration|diagram|infographic)\s+(?:of|about|on)\s+(.+)/i, group: 1 },
+    { re: /(?:image|diagram|illustration)\s+(?:of|about|on)\s+(.+)/i, group: 1 },
+    // Fallback : mots-clés simples sans capture
+    { re: /(?:génère une image|genere une image|visualise|show image|generate image)/i, group: null }
+];
+const questionLower = question.toLowerCase();
+
+let isImageRequest = false;
+let imageConcept = null;
+
+for (var _pi = 0; _pi < imagePatterns.length; _pi++) {
+    var _pat = imagePatterns[_pi];
+    var _m = question.match(_pat.re);
+    if (_m) {
+        isImageRequest = true;
+        if (_pat.group !== null && _m[_pat.group]) {
+            // Nettoyer le concept extrait : supprimer ponctuation finale, articles résiduels
+            imageConcept = _m[_pat.group]
+                .trim()
+                .replace(/[?.!,;:]+$/, '')
+                .replace(/^(?:le|la|les|un|une|des|du|de|l[''`])\s+/i, '')
+                .trim();
+        }
+        break;
+    }
+}
+
+if (isImageRequest) {
+    appendMessage(question, 'user');
+    // Si pas de concept extrait, utiliser la question nettoyée comme fallback
+    var conceptToUse = imageConcept || question
+        .replace(/(?:génère|genere|génerer|générer|illustre|dessine|montre|visualise|affiche|image|illustration|schéma|schema|infographie|generate|draw|show|diagram)\s*/gi, '')
+        .trim();
+    if (!conceptToUse || conceptToUse.length < 2) conceptToUse = question;
+    triggerGenerateImage(apiUrl, courseId, conceptToUse);
+    sendBtn.disabled = false;
+    input.disabled = false;
+    return;
+}
+sendBtn.disabled=true;input.disabled=true;clearSuggestions();if(window.speechSynthesis&&window.speechSynthesis.speaking)window.speechSynthesis.cancel();if(currentTtsBtn){resetTtsBtn(currentTtsBtn);currentTtsBtn=null;}appendMessage(question,'user');conversationHistory.push({role:'user',content:question});await checkAndTriggerLevelQuiz(question,apiUrl,courseId,conversationId,async function(){var loadingRow=appendMessage('','bot',true);try{var response=await fetch(apiUrl+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,course_id:courseId,student_id:studentId,conversation_id:conversationId,conversation_history:conversationHistory.slice(-6)})});loadingRow.remove();if(!response.ok)throw new Error('HTTP '+response.status);var data=await response.json();
+
+// Ajouter XP pour la question
+if (!isSmallTalk(question)) {
+fetch(apiUrl + '/xp/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({user_id: parseInt(studentId), course_id: courseId, action: 'question'})
+}).then(r => r.json()).then(xpData => {
+    if (xpData.new_badges && xpData.new_badges.length > 0) {
+        xpData.new_badges.forEach(badge => {
+            showXpNotification('+' + xpData.xp_gained + ' XP 🎉 Nouveau badge : ' + badge.label);
+        });
+    } else {
+        showXpNotification('+' + xpData.xp_gained + ' XP');
+    }
+    loadXpWidget(apiUrl, courseId);
+}).catch(() => {});}
+if(data.conversation_id){conversationId=data.conversation_id;localStorage.setItem('edo_conv_'+courseId,conversationId);}var msgEl=document.getElementById('edo-messages');var isQuiz=false;if(data.is_quiz_json===true)isQuiz=renderJsonQuiz(data.answer,msgEl);if(!isQuiz)isQuiz=renderInteractiveQuiz(data.answer,msgEl);if(!isQuiz)appendMessage(data.answer,'bot');conversationHistory.push({role:'assistant',content:data.answer});if(data.sources&&data.sources.length>0&&data.found_in_course)renderSources(data.sources,msgEl);if(data.follow_up_questions&&data.follow_up_questions.length>0)showSuggestions(data.follow_up_questions,apiUrl,courseId);if(data.is_quiz_json===true){setTimeout(function(){loadMastery(apiUrl,courseId);},1500);}}catch(error){if(document.querySelector('.edo-bubble--loading'))document.querySelector('.edo-bubble--loading').closest('.edo-bot-row').remove();appendMessage('⚠️ Je n\'arrive pas à joindre le serveur. Vérifie ta connexion et réessaie.','bot');console.error('[Edora Chat] Erreur fetch:',error);}finally{sendBtn.disabled=false;input.disabled=false;input.focus();}});if(levelQuizPending){sendBtn.disabled=false;input.disabled=false;}}
 
     function buildFloatingUI(apiUrl, courseId) {
         var fab = document.createElement('button');
@@ -1371,7 +1766,7 @@ function triggerMindMap(apiUrl, courseId) {
         panel.className = 'edo-panel';
 
         // ── FIX 2 : barre raccourcis dans un wrapper avec bouton toggle ──
-        panel.innerHTML =
+                panel.innerHTML =
             '<div class="edo-header">' +
                 '<div class="edo-header__avatar">' + AVATAR_IMG + '</div>' +
                 '<div class="edo-header__info">' +
@@ -1389,11 +1784,11 @@ function triggerMindMap(apiUrl, courseId) {
                 '<div class="edo-header__actions">' +
                     '<button id="edo-history-btn" class="edo-header__btn" title="Historique des conversations">' + SVG.history + '</button>' +
                     '<button id="edo-theme-toggle" class="edo-header__btn" title="Passer en mode sombre">' + SVG.moon + '</button>' +
-                    
                     '<button id="edo-minimize" class="edo-header__btn" title="Réduire">' + SVG.minimize + '</button>' +
                     '<button id="edo-close" class="edo-header__btn" aria-label="Fermer">' + SVG.close + '</button>' +
                 '</div>' +
             '</div>' +
+            '<div id="edo-xp-widget" style="padding:6px 13px;border-bottom:1px solid var(--edo-border);"></div>' +
             '<div id="edo-messages" class="edo-messages" role="log" aria-live="polite">' +
                 '<div class="edo-bot-row">' +
                     '<div class="edo-bot-avatar">' + AVATAR_IMG_SM + '</div>' +
@@ -1440,6 +1835,8 @@ function triggerMindMap(apiUrl, courseId) {
         loadLastConversation(apiUrl, courseId);
         loadStudentLevel(apiUrl, courseId);
         loadMastery(apiUrl, courseId);
+        loadXpWidget(apiUrl, courseId);
+
 
         // FAB open/close
         fab.addEventListener('click', function () {
@@ -1483,7 +1880,8 @@ function triggerMindMap(apiUrl, courseId) {
                     // Afficher le message utilisateur visible dans le chat, puis générer l'image
                     var userMsg = btn.dataset.question || 'Génère moi une image qui explique ce cours';
                     appendMessage(userMsg, 'user');
-                    triggerGenerateImage(apiUrl, courseId);
+                    // FIX : flow résumé → image (pas de concept demandé à l'utilisateur)
+                    triggerImageFromSummary(apiUrl, courseId);
                     return;
                 }
                 var q = btn.dataset.question;
@@ -1556,5 +1954,157 @@ function triggerMindMap(apiUrl, courseId) {
 
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); }
     else { init(); }
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// XP WIDGET
+// ══════════════════════════════════════════════════════════════════════════════
+
+function showXpNotification(message) {
+    var notif = document.createElement('div');
+    notif.style.cssText = [
+        'position:fixed;bottom:80px;right:20px;',
+        'background:linear-gradient(135deg,#0a9396,#005f73);',
+        'color:white;padding:10px 16px;border-radius:12px;',
+        'font-size:13px;font-weight:700;z-index:99999;',
+        'box-shadow:0 4px 15px rgba(10,147,150,0.4);',
+        'animation:edo-xp-pop 0.3s ease;pointer-events:none;'
+    ].join('');
+    notif.textContent = message;
+    if (!document.getElementById('edo-xp-anim')) {
+        var s = document.createElement('style');
+        s.id = 'edo-xp-anim';
+        s.textContent = '@keyframes edo-xp-pop{from{opacity:0;transform:translateY(10px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}';
+        document.head.appendChild(s);
+    }
+    document.body.appendChild(notif);
+    setTimeout(function() {
+        notif.style.transition = 'opacity 0.4s';
+        notif.style.opacity = '0';
+        setTimeout(function() { notif.remove(); }, 400);
+    }, 2500);
+}
+
+function loadXpWidget(apiUrl, courseId) {
+    fetch(apiUrl + '/xp?user_id=' + studentId + '&course_id=' + courseId)
+    .then(r => r.json())
+    .then(data => {
+        var widget = document.getElementById('edo-xp-widget');
+        if (!widget) return;
+
+        var levelColors = {
+            'Bronze':  '#cd7f32',
+            'Argent':  '#aaaaaa',
+            'Or':      '#ffd700',
+            'Platine': '#00c8ff',
+            'Diamant': '#b9f2ff'
+        };
+        var color = levelColors[data.level] || '#0a9396';
+        var percent = data.next_level_xp ? Math.round((data.xp / data.next_level_xp) * 100) : 100;
+
+   widget.innerHTML = [
+    '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;',
+    'background:var(--edo-bg,#f8fffe);border-radius:10px;',
+    'border:1.5px solid var(--edo-border,#e0f0ef);margin-bottom:8px;">',
+    
+    '<div style="font-size:20px;">⚡</div>',
+    '<div style="flex:1;">',
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">',
+    '<span style="font-size:13px;font-weight:700;color:', color, ';">', data.level, '</span>',
+    '<span style="font-size:13px;font-weight:700;color:var(--edo-text,#1a1a2e);">', data.xp, ' XP</span>',
+    '</div>',
+    '<div style="background:#e0f0ef;border-radius:4px;height:7px;overflow:hidden;">',
+    '<div style="width:', Math.min(percent, 100), '%;height:100%;',
+    'background:linear-gradient(90deg,#0a9396,', color, ');border-radius:4px;',
+    'transition:width 0.5s ease;"></div>',
+    '</div>',
+    data.next_level_xp ? '<div style="font-size:10px;color:var(--edo-text-muted,#6b7280);margin-top:2px;">' + data.xp + ' / ' + data.next_level_xp + ' XP</div>' : '',
+    '</div>',
+    
+    // Cloche
+    '<div id="edo-notif-bell" style="position:relative;cursor:pointer;margin-left:4px;">',
+    '<span style="font-size:20px;">🔔</span>',
+    (data.badges && data.badges.length > 0 ?
+        '<span style="position:absolute;top:-4px;right:-4px;background:#e63946;color:white;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;">' + data.badges.length + '</span>'
+        : ''),
+    '</div>',
+    '</div>',
+
+    // Panneau notifications
+    '<div id="edo-notif-panel" style="display:none;position:absolute;top:60px;right:10px;',
+    'background:white;border:1px solid #e0f0ef;border-radius:10px;',
+    'box-shadow:0 4px 20px rgba(0,0,0,0.1);padding:12px;min-width:220px;z-index:9999;">',
+    
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">',
+    '<span style="font-weight:700;font-size:13px;">Notifications</span>',
+    '<span id="edo-voir-tout" style="font-size:11px;color:#0a9396;cursor:pointer;">Tout voir</span>',
+    '</div>',
+    
+    // Badges récents (toujours visibles)
+    data.badges && data.badges.length > 0 ?
+        data.badges.slice(0, 2).map(b =>
+            '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;">' +
+            '<span style="font-size:18px;">🏆</span>' +
+            '<div><div style="font-size:12px;font-weight:600;">' + b.label + '</div>' +
+            '<div style="font-size:11px;color:#6b7280;">Badge débloqué !</div></div>' +
+            '<div style="margin-left:auto;font-size:10px;color:#6b7280;">À l\'instant</div>' +
+            '</div>'
+        ).join('') : '<div style="font-size:12px;color:#6b7280;">Aucune notification</div>',
+
+    // Tous les badges (masqués par défaut)
+    '<div id="edo-badges-liste" style="display:none;margin-top:8px;border-top:1px solid #f0f0ef;padding-top:8px;">',
+    data.badges && data.badges.length > 2 ?
+        data.badges.slice(2).map(b =>
+            '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;">' +
+            '<span style="font-size:18px;">🏆</span>' +
+            '<div><div style="font-size:12px;font-weight:600;">' + b.label + '</div>' +
+            '<div style="font-size:11px;color:#6b7280;">Badge débloqué !</div></div>' +
+            '</div>'
+        ).join('') : '',
+    '</div>',
+
+    '</div>'
+].join('');
+
+// Event listeners
+var bell = document.getElementById('edo-notif-bell');
+if (bell) {
+    bell.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var panel = document.getElementById('edo-notif-panel');
+        if (panel) {
+            var isOpening = panel.style.display === 'none';
+            panel.style.display = isOpening ? 'block' : 'none';
+            // FIX : remettre badge à 0 quand on ouvre le panel
+            if (isOpening) {
+                var badgeEl = bell.querySelector('span[style*="background:#e63946"]');
+                if (badgeEl) badgeEl.style.display = 'none';
+            }
+        }
+    });
+}
+
+var voirTout = document.getElementById('edo-voir-tout');
+if (voirTout) {
+    voirTout.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var liste = document.getElementById('edo-badges-liste');
+        if (liste) {
+            liste.style.display = liste.style.display === 'none' ? 'block' : 'none';
+            voirTout.textContent = liste.style.display === 'none' ? 'Tout voir' : 'Réduire';
+        }
+    });
+}
+
+document.addEventListener('click', function() {
+    var panel = document.getElementById('edo-notif-panel');
+    if (panel) panel.style.display = 'none';
+});
+})
+    .catch(() => {});
+}
+
+
+
 
 })();
