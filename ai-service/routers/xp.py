@@ -17,6 +17,7 @@ XP_RULES = {
     "quiz_done":    20,   # Quiz complété
     "quiz_perfect": 50,   # Quiz parfait (10/10)
     "first_login":  10,   # Première connexion
+
 }
 
 BADGES_RULES = {
@@ -144,6 +145,13 @@ async def add_xp(request: XpAddRequest):
             cursor.execute("""
                 UPDATE mdl_edora_xp
                 SET xp = xp + %s, quizzes_count = quizzes_count + 1
+                WHERE user_id = %s AND course_id = %s
+            """, (xp_gained, request.user_id, request.course_id))
+        else:
+            # Action générique (first_login, etc.) — XP seul
+            cursor.execute("""
+                UPDATE mdl_edora_xp
+                SET xp = xp + %s
                 WHERE user_id = %s AND course_id = %s
             """, (xp_gained, request.user_id, request.course_id))
         conn.commit()

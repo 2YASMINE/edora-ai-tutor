@@ -886,6 +886,8 @@ function triggerMindMap(apiUrl, courseId) {
             statKnownN.textContent  = known;
             statReviewN.textContent = review;
             messages.scrollTop = messages.scrollHeight;
+
+
         }
 
         function restart() {
@@ -1122,6 +1124,8 @@ function triggerMindMap(apiUrl, courseId) {
             messages.appendChild(row);
             messages.scrollTop = messages.scrollHeight;
 
+
+
         } catch(e) {
             if (loadingRow && loadingRow.parentNode) loadingRow.remove();
             appendMessage('❌ Erreur lors de la génération de l\'image : ' + e.message, 'bot', false);
@@ -1333,6 +1337,7 @@ console.log('DEBUG image response:', data);
             messages.scrollTop = messages.scrollHeight;
 
 
+
         } catch(e) {
             if (loadingRow && loadingRow.parentNode) loadingRow.remove();
             appendMessage('⚠️ Erreur lors de la génération de l\'image : ' + e.message, 'bot');
@@ -1347,6 +1352,43 @@ console.log('DEBUG image response:', data);
     // ══════════════════════════════════════════════════════════
     // HISTORIQUE
     // ══════════════════════════════════════════════════════════
+
+    /**
+     * Génère un titre lisible pour une conversation à partir du premier message.
+     * - Supprime les préfixes de politesse, raccourcit intelligemment.
+     * - Retourne un titre de 3-6 mots max, avec majuscule initiale.
+     */
+    function generateConvTitle(firstMessage) {
+        if (!firstMessage) return '💬 Nouvelle conversation';
+        var msg = firstMessage.trim()
+            .replace(/^(bonjour|salut|hello|hi|bonsoir|coucou)[,!.\s]*/i, '')
+            .replace(/^(peux[- ]tu|est[- ]ce que tu peux|peut[- ]on|pouvez[- ]vous|peux tu|peux-tu)\s+/i, '')
+            .replace(/^(explique[- ]moi|dis[- ]moi|montre[- ]moi|aide[- ]moi|c'est quoi|qu'est[- ]ce que|kesako|comment|pourquoi|qu[''`]est[- ]ce que|c'est quoi)\s+/i, '')
+            .replace(/^(génère|crée|fais|donne[- ]moi|résume|explique|décris|définis)\s+/i, '')
+            .trim();
+
+        // Icône contextuelle selon le sujet
+        var icon = '💬';
+        var lower = msg.toLowerCase();
+        if (/quiz|qcm|question/.test(lower))         icon = '📝';
+        else if (/résum|synthèse|synthese/.test(lower)) icon = '📄';
+        else if (/exemple|exercice/.test(lower))      icon = '💡';
+        else if (/image|illustr|schéma/.test(lower))  icon = '🖼️';
+        else if (/flashcard|carte/.test(lower))        icon = '🃏';
+        else if (/définit|défini|c'est quoi/.test(lower)) icon = '📚';
+        else if (/comment|pourquoi|expli/.test(lower)) icon = '🎓';
+
+        // Tronquer à ~45 caractères sur la frontière d'un mot
+        if (msg.length > 45) {
+            msg = msg.substring(0, 45).replace(/\s\S+$/, '') + '…';
+        }
+        if (!msg) return '💬 Conversation';
+        // Majuscule initiale
+        msg = msg.charAt(0).toUpperCase() + msg.slice(1);
+        return icon + ' ' + msg;
+    }
+
+
     async function loadConversation(convId, apiUrl, courseId) {
         try {
             var resp = await fetch(apiUrl + '/history?conversation_id=' + encodeURIComponent(convId) + '&course_id=' + courseId);
@@ -1429,10 +1471,15 @@ console.log('DEBUG image response:', data);
                 var isActive = conv.conversation_id === conversationId;
                 var isDark = document.getElementById('edo-panel').getAttribute('data-theme') === 'dark';
                 var titleColor = isActive ? '#22d3ee' : (isDark ? '#e2e8f5' : '#111827');
+                // ── Titre intelligent : résumé contextuel de la 1ère question utilisateur ──
+                var rawTitle = conv.first_message || 'Conversation';
+                var convTitle = generateConvTitle(rawTitle);
+
                 var item = document.createElement('button');
-                item.style.cssText = 'width:100%;text-align:left;padding:11px 13px;border-radius:11px;cursor:pointer;border:1.5px solid ' + (isActive ? '#0a9396' : '#e5e7eb') + ';background:' + (isActive ? '#e9f5f2' : '#f9fafb') + ';transition:all 0.15s;display:flex;flex-direction:column;gap:4px;';
+                // Dimensions fixes pour toutes les cartes (height uniforme)
+                item.style.cssText = 'width:100%;text-align:left;padding:11px 13px;border-radius:11px;cursor:pointer;border:1.5px solid ' + (isActive ? '#0a9396' : '#e5e7eb') + ';background:' + (isActive ? '#e9f5f2' : '#f9fafb') + ';transition:all 0.15s;display:flex;flex-direction:column;gap:4px;height:70px;box-sizing:border-box;';
                 var metaColor = isDark ? 'rgba(100,116,139,0.8)' : '#9ca3af';
-                item.innerHTML = '<div style="font-size:13px;font-weight:500;color:' + titleColor + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">' + SVG.chat + '&nbsp; ' + (conv.first_message || 'Conversation') + '</div><div style="font-size:11px;color:' + metaColor + ';display:flex;gap:8px;"><span>' + formatDate(conv.created_at) + '</span><span>·</span><span>' + conv.message_count + ' messages</span>' + (isActive ? '<span style="color:#0a9396;font-weight:600;">· Active</span>' : '') + '</div>';
+                item.innerHTML = '<div style="font-size:13px;font-weight:500;color:' + titleColor + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;flex:1;">' + SVG.chat + '&nbsp; ' + convTitle + '</div><div style="font-size:11px;color:' + metaColor + ';display:flex;gap:8px;align-items:center;flex-shrink:0;"><span>' + formatDate(conv.created_at) + '</span><span>·</span><span>' + conv.message_count + ' msg</span>' + (isActive ? '<span style="color:#0a9396;font-weight:600;">· Active</span>' : '') + '</div>';
                 item.addEventListener('mouseenter', function () { if (!isActive) { item.style.background='#f0f7f6'; item.style.borderColor='#94d2bd'; } });
                 item.addEventListener('mouseleave', function () { if (!isActive) { item.style.background='#f9fafb'; item.style.borderColor='#e5e7eb'; } });
                 item.addEventListener('click', async function () { hp.remove(); await loadConversation(conv.conversation_id, apiUrl, courseId); });
