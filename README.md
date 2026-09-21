@@ -15,7 +15,7 @@ Plugin Moodle de tutorat intelligent basé sur une architecture RAG (*Retrieval-
 | Plugin | PHP — `block_tutor_ai` |
 | Microservice IA | FastAPI + Uvicorn (port 8000) |
 | Base vectorielle | ChromaDB (persistant) |
-| LLM | Gemini 2.5 Flash (Google API) |
+| LLM | Gemini 3.5 Flash (Google API) |
 | Génération image | Gemini 2.5 Flash Image |
 | Embeddings | gemini-embedding-2 (3072 dim) |
 | Base de données | MariaDB |
@@ -85,7 +85,7 @@ edora-ai-tutor/
 │   ├── services/                    # RAG pipeline (extract, chunk, embed, chroma)
 │   └── chroma_db/                   # Base vectorielle persistante
 └── docs/                            # Documentation
-    └── admin-guide.html             # Guide administrateur complet
+    └── Admin_Guide.html             # Guide administrateur complet
 ```
 
 ---
@@ -101,7 +101,7 @@ edora-ai-tutor/
 
 ## Documentation
 
-👉 Voir [`docs/admin-guide.html`](docs/Admin_Guide.html) pour le guide administrateur complet :
+👉 Voir [`docs/Admin_Guide.html`](docs/Admin_Guide.html) pour le guide administrateur complet :
 architecture détaillée, endpoints API, schéma base de données, troubleshooting.
 
 ---
